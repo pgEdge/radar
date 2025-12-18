@@ -85,11 +85,11 @@ These collectors only run on Linux systems.
 | `system/read_ahead.out` | `blockdev --getra /dev/*` | Block device read-ahead settings |
 | `system/sar.out` | `sar -A` | System activity report |
 | `system/sestatus.out` | `sestatus` | SELinux status |
-| `system/sys/cpu_scaling_available_governors.out` | `/sys/.../scaling_available_governors` | Available CPU governors |
-| `system/sys/cpu_scaling_driver.out` | `/sys/.../scaling_driver` | CPU frequency scaling driver |
-| `system/sys/cpu_scaling_governor.out` | `/sys/.../scaling_governor` | Active CPU governor |
-| `system/sys/energy_perf_bias.out` | `/sys/.../energy_perf_bias` | CPU energy performance bias |
-| `system/sys/intel_pstate.out` | `/sys/.../intel_pstate/*` | Intel P-state settings |
+| `system/sys/cpu_scaling_available_governors.out` | `/sys/devices/system/cpu/cpu*/cpufreq/scaling_available_governors` | Available CPU governors |
+| `system/sys/cpu_scaling_driver.out` | `/sys/devices/system/cpu/cpu*/cpufreq/scaling_driver` | CPU frequency scaling driver |
+| `system/sys/cpu_scaling_governor.out` | `/sys/devices/system/cpu/cpu*/cpufreq/scaling_governor` | Active CPU governor |
+| `system/sys/energy_perf_bias.out` | `/sys/devices/system/cpu/cpu*/power/energy_perf_bias` | CPU energy performance bias |
+| `system/sys/intel_pstate.out` | `/sys/devices/system/cpu/intel_pstate/*` | Intel P-state settings |
 | `system/sys/kernel_mm_transparent_hugepage.out` | `/sys/kernel/mm/transparent_hugepage/*` | Transparent hugepage settings |
 | `system/system_release.out` | `/etc/system-release` | System release info |
 | `system/systemd/list-units.out` | `systemctl list-units --all` | Systemd units |
