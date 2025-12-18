@@ -1,0 +1,38 @@
+# Binaries
+radar
+pg_statviz_export
+
+# Claude Code (personal dev environment)
+.claude/
+CLAUDE.md
+
+# Backup files
+*.backup
+*.bak
+*.BAK
+
+# Migration scripts (one-time tools)
+convert_*.py
+
+# Test outputs
+*.zip
+test-system/
+
+# Go build artifacts
+*.test
+*.out
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.log
