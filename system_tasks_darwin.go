@@ -1,5 +1,15 @@
 //go:build darwin
 
+/*-------------------------------------------------------------------------
+ *
+ * radar
+ *
+ * Portions copyright (c) 2025, pgEdge, Inc.
+ * This software is released under The PostgreSQL License
+ *
+ *-------------------------------------------------------------------------
+ */
+
 package main
 
 // macOS-specific command tasks
