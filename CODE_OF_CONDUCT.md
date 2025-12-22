@@ -4,4 +4,4 @@ The radar project fully agrees with, embraces and supports the standards, values
 
 * https://www.postgresql.org/about/policies/coc/
 
-For any reports of inappropriate behavior, kindly email the project maintainer promptly at vyruss@hellug.gr.
+For any reports of inappropriate behavior, kindly email the project maintainer promptly at jimmy@pgedge.com.
