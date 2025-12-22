@@ -226,8 +226,11 @@ radar-hostname-20260115-133700.zip
 - Sequential execution with minimal memory footprint
 - Complete collection typically takes seconds
 
-## Support
+## Author
 
+Created by Jimmy Angelakos.
+
+## Support
 
 - **Issues**: Report bugs and feature requests on [GitHub Issues](https://github.com/vyruss/radar/issues)
 - **Contributing**: See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines
@@ -235,4 +238,4 @@ radar-hostname-20260115-133700.zip
 
 ## License
 
-See [LICENSE](LICENSE) for details.
+See [LICENCE.md](LICENCE.md) for details.
