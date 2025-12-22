@@ -475,4 +475,4 @@ See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community guidelines.
 
 ## License
 
-By contributing to radar, you agree that your contributions will be licensed under the same license as the project. See [LICENSE](LICENSE) for details.
+By contributing to radar, you agree that your contributions will be licensed under the same license as the project. See [LICENSE.md](LICENSE.md) for details.
