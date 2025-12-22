@@ -23,30 +23,9 @@ Collects a comprehensive snapshot of system and PostgreSQL metrics for troublesh
 
 radar supports Linux and macOS.
 
-### Building from Source
+Download pre-built binaries from [GitHub Releases](https://github.com/pgEdge/radar/releases).
 
-```bash
-# Clone the repository
-git clone https://github.com/vyruss/radar.git
-cd radar
-
-# Build for your platform
-CGO_ENABLED=0 go build -ldflags="-s -w" -o radar .
-
-# Optionally move to system path
-sudo mv radar /usr/local/bin/
-```
-
-### Platform-Specific Notes
-
-**macOS**: Install PostgreSQL via Homebrew if needed:
-```bash
-brew install postgresql@18
-```
-
-**Collectors**: Some system collectors are platform-specific. Linux-only collectors (systemd, SELinux, /proc, /sys filesystems) will be skipped on macOS. macOS uses platform-specific collectors (sysctl, system_profiler, diskutil, launchctl, etc.) instead.
-
-For detailed build instructions and cross-compilation, see [CONTRIBUTING.md](CONTRIBUTING.md).
+**Platform Notes**: Some system collectors are platform-specific. Linux-only collectors (systemd, SELinux, /proc, /sys filesystems) will be skipped on macOS. macOS uses platform-specific collectors (sysctl, system_profiler, diskutil, launchctl, etc.) instead.
 
 ## Quick Start
 
@@ -146,7 +125,7 @@ $ ./radar -d mydatabase
 
 ## Data Collected
 
-For a complete reference of all collected data, see [DATA.md](DATA.md).
+For a complete reference of all collected data, see [data.md](data.md).
 
 **System Information**
 
@@ -216,9 +195,8 @@ radar-hostname-20260115-133700.zip
 
 ## Requirements
 
-- **System**: Linux with standard utilities (lsblk, mount, df, ps, etc.)
+- **System**: Linux or macOS with standard utilities (lsblk, mount, df, ps, etc.)
 - **PostgreSQL**: Version 12+ (some features require 13+, 14+, or 16+)
-- **Go**: 1.23+ (for building from source - see [CONTRIBUTING.md](CONTRIBUTING.md))
 
 ## Performance
 
@@ -232,9 +210,7 @@ Created by Jimmy Angelakos.
 
 ## Support
 
-- **Issues**: Report bugs and feature requests on [GitHub Issues](https://github.com/vyruss/radar/issues)
-- **Contributing**: See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines
-- **Code of Conduct**: See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+- **Issues**: Report bugs and feature requests on [GitHub Issues](https://github.com/pgEdge/radar/issues)
 
 ## License
 

@@ -52,5 +52,5 @@ repo_url: https://github.com/pgEdge/radar
 nav:
   - Introduction: index.md
   - Data Reference: data.md
-  - Contributing: contributing.md
   - Changelog: changelog.md
+  - License: LICENCE.md

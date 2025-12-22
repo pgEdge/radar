@@ -146,7 +146,7 @@ $ ./radar -d mydatabase
 
 ## Data Collected
 
-For a complete reference of all collected data, see [DATA.md](DATA.md).
+For a complete reference of all collected data, see [docs/data.md](docs/data.md).
 
 **System Information**
 
