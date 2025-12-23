@@ -146,6 +146,7 @@ Instance-level PostgreSQL collectors. Files stored in `postgresql/`.
 | `postgresql/available_extensions.tsv` | `pg_available_extensions` | Available extensions |
 | `postgresql/bgwriter.tsv` | `pg_stat_bgwriter` | Background writer statistics |
 | `postgresql/blocking_locks.tsv` | Complex query | Blocking/blocked lock pairs |
+| `postgresql/checkpointer.tsv` | `pg_stat_checkpointer` | Checkpoint statistics (PG17+) |
 | `postgresql/configuration.tsv` | `pg_settings` | Configuration parameters |
 | `postgresql/databases.tsv` | `pg_database` | Database list |
 | `postgresql/databases_checksums.tsv` | `pg_stat_database` | Checksum failure counts |
@@ -153,6 +154,7 @@ Instance-level PostgreSQL collectors. Files stored in `postgresql/`.
 | `postgresql/pg_hba.conf` | Data directory | Host-based authentication config |
 | `postgresql/pg_hba_file_rules.tsv` | `pg_hba_file_rules` | Parsed pg_hba.conf rules (PG10+) |
 | `postgresql/pg_ident.conf` | Data directory | User name mapping config |
+| `postgresql/postmaster_start_time.tsv` | `pg_postmaster_start_time()` | Server startup timestamp |
 | `postgresql/postgresql.auto.conf` | Data directory | Auto-generated configuration |
 | `postgresql/postgresql.conf` | Data directory | Main configuration file |
 | `postgresql/prepared_xacts.tsv` | `pg_prepared_xacts` | Prepared transactions |
@@ -165,11 +167,13 @@ Instance-level PostgreSQL collectors. Files stored in `postgresql/`.
 | `postgresql/running_activity.tsv` | `pg_stat_activity` | Active connections and queries |
 | `postgresql/running_activity_maxage.tsv` | Complex query | Oldest queries/transactions |
 | `postgresql/running_locks.tsv` | `pg_locks WHERE granted` | Held locks |
+| `postgresql/stat_io.tsv` | `pg_stat_io` | I/O statistics by backend type (PG16+) |
 | `postgresql/stat_progress_analyze.tsv` | `pg_stat_progress_analyze` | ANALYZE progress (PG13+) |
 | `postgresql/stat_progress_basebackup.tsv` | `pg_stat_progress_basebackup` | Base backup progress (PG13+) |
 | `postgresql/stat_progress_copy.tsv` | `pg_stat_progress_copy` | COPY progress (PG14+) |
 | `postgresql/stat_progress_vacuum.tsv` | `pg_stat_progress_vacuum` | VACUUM progress (PG9.6+) |
 | `postgresql/stat_slru.tsv` | `pg_stat_slru` | SLRU cache statistics |
+| `postgresql/stat_wal.tsv` | `pg_stat_wal` | WAL generation statistics (PG14+) |
 | `postgresql/subscriptions.tsv` | `pg_subscription` | Logical replication subscriptions |
 | `postgresql/tablespaces.tsv` | `pg_tablespace` | Tablespace definitions |
 | `postgresql/version.tsv` | `version()` | PostgreSQL version |
@@ -194,6 +198,7 @@ Collected for each accessible database. Files stored in `databases/{dbname}/`.
 | `publication_tables.tsv` | `pg_publication_tables` | Tables in publications |
 | `publications.tsv` | `pg_publication` | Logical replication publications |
 | `schemas.tsv` | `pg_namespace` | Schemas |
+| `stat_database.tsv` | `pg_stat_database` | Database statistics (conflicts, deadlocks, temp files) |
 | `statistics.tsv` | `pg_statistic_ext` | Extended statistics (PG10+) |
 | `subscription_tables.tsv` | `pg_subscription_rel` | Subscription relation states |
 | `tables.tsv` | `pg_tables` | Tables |

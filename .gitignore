@@ -36,3 +36,6 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.log
+
+# MkDocs build output
+site/

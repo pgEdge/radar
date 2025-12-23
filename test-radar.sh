@@ -13,8 +13,9 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-echo "Building radar..."
-CGO_ENABLED=0 go build -ldflags="-s -w" -o radar .
+# Binary is pre-built by run-ci-local.sh and copied into container by Dockerfile
+echo "Using pre-built radar binary..."
+./radar --help > /dev/null 2>&1 || { echo -e "${RED}✗ radar binary not found or not executable${NC}"; exit 1; }
 
 echo ""
 echo "Initializing PostgreSQL 18..."

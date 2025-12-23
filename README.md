@@ -160,8 +160,8 @@ For a complete reference of all collected data, see [docs/data.md](docs/data.md)
 **PostgreSQL Instance**
 
 - **Configuration & files**: `pg_db_role_setting`, `pg_hba.conf`, `pg_hba_file_rules`, `pg_ident.conf`, `pg_settings`, `pg_tablespace`, `postgresql.auto.conf`, `postgresql.conf`, `recovery.conf`, `recovery.done`
-- **Activity & monitoring**: `pg_locks`, `pg_prepared_xacts`, `pg_stat_activity`
-- **Statistics views**: `pg_stat_archiver`, `pg_stat_bgwriter`, `pg_stat_database`, `pg_stat_slru`
+- **Activity & monitoring**: `pg_locks`, `pg_postmaster_start_time()`, `pg_prepared_xacts`, `pg_stat_activity`
+- **Statistics views**: `pg_stat_archiver`, `pg_stat_bgwriter`, `pg_stat_checkpointer` (PG17+), `pg_stat_io` (PG16+), `pg_stat_slru`, `pg_stat_wal` (PG14+)
 - **Replication**: `pg_replication_origin_status`, `pg_replication_slots`, `pg_stat_replication`, `pg_subscription`
 - **Progress tracking**: `pg_stat_progress_analyze`, `pg_stat_progress_basebackup`, `pg_stat_progress_copy`, `pg_stat_progress_vacuum`
 - **Catalog**: `pg_available_extensions`, `pg_database`, `pg_roles`, `version()`
@@ -173,6 +173,7 @@ For a complete reference of all collected data, see [docs/data.md](docs/data.md)
 - **Triggers & partitioning**: `pg_inherits`, `pg_partitioned_table`, `pg_trigger`
 - **Logical replication**: `pg_publication`, `pg_publication_tables`, `pg_subscription_rel`
 - **Extensions**: `pg_extension`, `pg_language`, `pg_statistic_ext`
+- **Statistics**: `pg_stat_database` (conflicts, deadlocks, temp files, stats reset)
 
 **[pg_statviz](https://github.com/vyruss/pg_statviz) Extension** (if present)
 

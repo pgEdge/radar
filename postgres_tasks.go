@@ -78,6 +78,11 @@ JOIN pg_catalog.pg_stat_activity blocking_activity ON blocking_activity.pid = bl
 WHERE NOT blocked_locks.granted`,
 	},
 	{
+		Name:        "checkpointer",
+		ArchivePath: "postgresql/checkpointer.tsv",
+		Query:       "SELECT * FROM pg_stat_checkpointer",
+	},
+	{
 		Name:        "configuration",
 		ArchivePath: "postgresql/configuration.tsv",
 		Query:       "SELECT name, setting, unit, category, short_desc FROM pg_settings ORDER BY category, name",
@@ -101,6 +106,11 @@ WHERE NOT blocked_locks.granted`,
 		Name:        "pg_hba_file_rules",
 		ArchivePath: "postgresql/pg_hba_file_rules.tsv",
 		Query:       "SELECT * FROM pg_hba_file_rules ORDER BY line_number",
+	},
+	{
+		Name:        "postmaster_start_time",
+		ArchivePath: "postgresql/postmaster_start_time.tsv",
+		Query:       "SELECT pg_postmaster_start_time() AS start_time",
 	},
 	{
 		Name:        "prepared_xacts",
@@ -143,6 +153,11 @@ WHERE state != 'idle'`,
 		Query:       "SELECT * FROM pg_locks WHERE granted ORDER BY pid, locktype",
 	},
 	{
+		Name:        "stat_io",
+		ArchivePath: "postgresql/stat_io.tsv",
+		Query:       "SELECT * FROM pg_stat_io ORDER BY backend_type, context, object",
+	},
+	{
 		Name:        "stat_progress_analyze",
 		ArchivePath: "postgresql/stat_progress_analyze.tsv",
 		Query:       "SELECT * FROM pg_stat_progress_analyze",
@@ -166,6 +181,11 @@ WHERE state != 'idle'`,
 		Name:        "stat_slru",
 		ArchivePath: "postgresql/stat_slru.tsv",
 		Query:       "SELECT * FROM pg_stat_slru ORDER BY name",
+	},
+	{
+		Name:        "stat_wal",
+		ArchivePath: "postgresql/stat_wal.tsv",
+		Query:       "SELECT * FROM pg_stat_wal",
 	},
 	{
 		Name:        "subscriptions",
@@ -256,6 +276,18 @@ var perDatabaseQueryTasks = []SimpleQueryTask{
 		Name:        "schemas",
 		ArchivePath: "databases/%s/schemas.tsv",
 		Query:       "SELECT * FROM pg_namespace ORDER BY nspname",
+	},
+	{
+		Name:        "stat_database",
+		ArchivePath: "databases/%s/stat_database.tsv",
+		Query: `SELECT datname,
+       conflicts,
+       deadlocks,
+       temp_files,
+       temp_bytes,
+       stats_reset
+FROM pg_stat_database
+WHERE datname = current_database()`,
 	},
 	{
 		Name:        "statistics",
