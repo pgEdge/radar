@@ -93,9 +93,24 @@ WHERE NOT blocked_locks.granted`,
 		Query:       "SELECT oid, datname, datdba, encoding, datcollate, datctype FROM pg_database ORDER BY datname",
 	},
 	{
+		Name:        "databases_blk",
+		ArchivePath: "postgresql/databases_blk.tsv",
+		Query:       "SELECT datname, blks_read, blks_hit, blk_read_time, blk_write_time FROM pg_stat_database WHERE datname IS NOT NULL ORDER BY datname",
+	},
+	{
 		Name:        "databases_checksums",
 		ArchivePath: "postgresql/databases_checksums.tsv",
 		Query:       "SELECT datname, checksum_failures, checksum_last_failure FROM pg_stat_database WHERE datname IS NOT NULL ORDER BY datname",
+	},
+	{
+		Name:        "databases_tup",
+		ArchivePath: "postgresql/databases_tup.tsv",
+		Query:       "SELECT datname, tup_returned, tup_fetched, tup_inserted, tup_updated, tup_deleted FROM pg_stat_database WHERE datname IS NOT NULL ORDER BY datname",
+	},
+	{
+		Name:        "databases_xact",
+		ArchivePath: "postgresql/databases_xact.tsv",
+		Query:       "SELECT datname, xact_commit, xact_rollback FROM pg_stat_database WHERE datname IS NOT NULL ORDER BY datname",
 	},
 	{
 		Name:        "db_role_setting",

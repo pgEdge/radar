@@ -149,7 +149,10 @@ Instance-level PostgreSQL collectors. Files stored in `postgresql/`.
 | `postgresql/checkpointer.tsv` | `pg_stat_checkpointer` | Checkpoint statistics (PG17+) |
 | `postgresql/configuration.tsv` | `pg_settings` | Configuration parameters |
 | `postgresql/databases.tsv` | `pg_database` | Database list |
+| `postgresql/databases_blk.tsv` | `pg_stat_database` | Block read/write statistics |
 | `postgresql/databases_checksums.tsv` | `pg_stat_database` | Checksum failure counts |
+| `postgresql/databases_tup.tsv` | `pg_stat_database` | Tuple operation statistics |
+| `postgresql/databases_xact.tsv` | `pg_stat_database` | Transaction commit/rollback counts |
 | `postgresql/db_role_setting.tsv` | `pg_db_role_setting` | Per-database/role settings |
 | `postgresql/pg_hba.conf` | Data directory | Host-based authentication config |
 | `postgresql/pg_hba_file_rules.tsv` | `pg_hba_file_rules` | Parsed pg_hba.conf rules (PG10+) |
