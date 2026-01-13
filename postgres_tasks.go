@@ -2,7 +2,7 @@
  *
  * radar
  *
- * Portions copyright (c) 2025, pgEdge, Inc.
+ * Portions copyright (c) 2026, pgEdge, Inc.
  * This software is released under The PostgreSQL License
  *
  *-------------------------------------------------------------------------
@@ -331,12 +331,12 @@ var pgStatvizQueryTasks = []SimpleQueryTask{
 	{
 		Name:        "pg_statviz_conf",
 		ArchivePath: "pg_statviz/%s/conf.tsv",
-		Query:       "SELECT snapshot_tstamp, conf::text FROM pgstatviz.conf ORDER BY snapshot_tstamp",
+		Query:       "SELECT * FROM pgstatviz.conf ORDER BY snapshot_tstamp",
 	},
 	{
 		Name:        "pg_statviz_conn",
 		ArchivePath: "pg_statviz/%s/conn.tsv",
-		Query:       "SELECT snapshot_tstamp, conn_total, conn_active, conn_idle, conn_idle_trans, conn_idle_trans_abort, conn_fastpath, conn_users::text FROM pgstatviz.conn ORDER BY snapshot_tstamp",
+		Query:       "SELECT * FROM pgstatviz.conn ORDER BY snapshot_tstamp",
 	},
 	{
 		Name:        "pg_statviz_db",
@@ -346,22 +346,32 @@ var pgStatvizQueryTasks = []SimpleQueryTask{
 	{
 		Name:        "pg_statviz_io",
 		ArchivePath: "pg_statviz/%s/io.tsv",
-		Query:       "SELECT snapshot_tstamp, io_stats::text, stats_reset FROM pgstatviz.io ORDER BY snapshot_tstamp",
+		Query:       "SELECT * FROM pgstatviz.io ORDER BY snapshot_tstamp",
 	},
 	{
 		Name:        "pg_statviz_lock",
 		ArchivePath: "pg_statviz/%s/lock.tsv",
-		Query:       "SELECT snapshot_tstamp, locks_total, locks::text FROM pgstatviz.lock ORDER BY snapshot_tstamp",
+		Query:       "SELECT * FROM pgstatviz.lock ORDER BY snapshot_tstamp",
+	},
+	{
+		Name:        "pg_statviz_repl",
+		ArchivePath: "pg_statviz/%s/repl.tsv",
+		Query:       "SELECT * FROM pgstatviz.repl ORDER BY snapshot_tstamp",
+	},
+	{
+		Name:        "pg_statviz_slru",
+		ArchivePath: "pg_statviz/%s/slru.tsv",
+		Query:       "SELECT * FROM pgstatviz.slru ORDER BY snapshot_tstamp",
 	},
 	{
 		Name:        "pg_statviz_snapshots",
 		ArchivePath: "pg_statviz/%s/snapshots.tsv",
-		Query:       "SELECT snapshot_tstamp FROM pgstatviz.snapshots ORDER BY snapshot_tstamp",
+		Query:       "SELECT * FROM pgstatviz.snapshots ORDER BY snapshot_tstamp",
 	},
 	{
 		Name:        "pg_statviz_wait",
 		ArchivePath: "pg_statviz/%s/wait.tsv",
-		Query:       "SELECT snapshot_tstamp, wait_events_total, wait_events::text FROM pgstatviz.wait ORDER by snapshot_tstamp",
+		Query:       "SELECT * FROM pgstatviz.wait ORDER BY snapshot_tstamp",
 	},
 	{
 		Name:        "pg_statviz_wal",

@@ -219,6 +219,8 @@ If the pg_statviz extension is installed in a database, these collectors are ava
 | `db.tsv` | `pgstatviz.db` | Database statistics |
 | `io.tsv` | `pgstatviz.io` | I/O statistics (JSONB, PG16+) |
 | `lock.tsv` | `pgstatviz.lock` | Lock statistics (JSONB) |
+| `repl.tsv` | `pgstatviz.repl` | Replication statistics (JSONB) |
+| `slru.tsv` | `pgstatviz.slru` | SLRU cache statistics (JSONB) |
 | `snapshots.tsv` | `pgstatviz.snapshots` | Snapshot timestamps |
 | `wait.tsv` | `pgstatviz.wait` | Wait event statistics (JSONB) |
 | `wal.tsv` | `pgstatviz.wal` | WAL statistics (PG14+) |
