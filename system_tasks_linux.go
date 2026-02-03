@@ -13,19 +13,9 @@
 package main
 
 // System command tasks (sorted alphabetically by name)
+// Note: df, dmesg, locale, locale-all, mount, openssl-ciphers, openssl-engines,
+// openssl-version, ps, uname, sysctl are in sharedCommandTasks
 var systemCommandTasks = []SimpleCommandTask{
-	{
-		Name:        "df",
-		ArchivePath: "system/diskspace.out",
-		Command:     "df",
-		Args:        []string{"-h"},
-	},
-	{
-		Name:        "dmesg",
-		ArchivePath: "system/dmesg.out",
-		Command:     "dmesg",
-		Args:        []string{},
-	},
 	{
 		Name:        "dmesg-t",
 		ArchivePath: "system/dmesg_t.out",
@@ -75,18 +65,6 @@ var systemCommandTasks = []SimpleCommandTask{
 		Args:        []string{"-a"},
 	},
 	{
-		Name:        "locale",
-		ArchivePath: "system/locale.out",
-		Command:     "locale",
-		Args:        []string{},
-	},
-	{
-		Name:        "locale-all",
-		ArchivePath: "system/locale_all.out",
-		Command:     "locale",
-		Args:        []string{"-a"},
-	},
-	{
 		Name:        "localectl",
 		ArchivePath: "system/localectl.out",
 		Command:     "localectl",
@@ -117,12 +95,6 @@ var systemCommandTasks = []SimpleCommandTask{
 		Args:        []string{},
 	},
 	{
-		Name:        "mount",
-		ArchivePath: "system/mount.out",
-		Command:     "mount",
-		Args:        []string{},
-	},
-	{
 		Name:        "mpstat",
 		ArchivePath: "system/mpstat.out",
 		Command:     "mpstat",
@@ -133,12 +105,6 @@ var systemCommandTasks = []SimpleCommandTask{
 		ArchivePath: "system/nfsiostat.out",
 		Command:     "nfsiostat",
 		Args:        []string{},
-	},
-	{
-		Name:        "openssl-ciphers",
-		ArchivePath: "system/openssl/ciphers.out",
-		Command:     "openssl",
-		Args:        []string{"ciphers"},
 	},
 	{
 		Name:        "openssl-crypto-policies-isapplied",
@@ -153,22 +119,10 @@ var systemCommandTasks = []SimpleCommandTask{
 		Args:        []string{"--show"},
 	},
 	{
-		Name:        "openssl-engines",
-		ArchivePath: "system/openssl/engines.out",
-		Command:     "openssl",
-		Args:        []string{"engine"},
-	},
-	{
 		Name:        "openssl-fips-mode-setup",
 		ArchivePath: "system/openssl/fips-mode-setup.out",
 		Command:     "fips-mode-setup",
 		Args:        []string{"--check"},
-	},
-	{
-		Name:        "openssl-version",
-		ArchivePath: "system/openssl/version.out",
-		Command:     "openssl",
-		Args:        []string{"version", "-a"},
 	},
 	{
 		Name:        "packages-apt-list-installed",
@@ -199,12 +153,6 @@ var systemCommandTasks = []SimpleCommandTask{
 		ArchivePath: "system/packages-yum-list-installed.out",
 		Command:     "yum",
 		Args:        []string{"list", "installed", "*postgres*"},
-	},
-	{
-		Name:        "ps",
-		ArchivePath: "system/ps.out",
-		Command:     "ps",
-		Args:        []string{"auxww"},
 	},
 	{
 		Name:        "sar",
@@ -241,12 +189,6 @@ var systemCommandTasks = []SimpleCommandTask{
 		ArchivePath: "system/tuned/tuned-list.out",
 		Command:     "tuned-adm",
 		Args:        []string{"list"},
-	},
-	{
-		Name:        "uname",
-		ArchivePath: "system/uname.out",
-		Command:     "uname",
-		Args:        []string{"-a"},
 	},
 	{
 		Name:        "vmstat-command",
@@ -297,12 +239,6 @@ var systemCommandTasks = []SimpleCommandTask{
 		Args:        []string{"-c", "blockdev --getra /dev/sd* /dev/nvme* 2>/dev/null"},
 	},
 	{
-		Name:        "sysctl",
-		ArchivePath: "system/sysctl.out",
-		Command:     "sysctl",
-		Args:        []string{"-a"},
-	},
-	{
 		Name:        "transparent_hugepage",
 		ArchivePath: "system/sys/kernel_mm_transparent_hugepage.out",
 		Command:     "sh",
@@ -321,11 +257,6 @@ var systemFileTasks = []SimpleFileTask{
 		Name:        "fstab",
 		ArchivePath: "system/fstab.out",
 		Path:        "/etc/fstab",
-	},
-	{
-		Name:        "hosts",
-		ArchivePath: "system/hosts.out",
-		Path:        "/etc/hosts",
 	},
 	{
 		Name:        "limits",

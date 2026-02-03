@@ -14,6 +14,20 @@ package main
 
 // macOS-specific command tasks
 var systemCommandTasks = []SimpleCommandTask{
+	// Hostname (macOS doesn't support -f flag)
+	{
+		Name:        "hostname",
+		ArchivePath: "system/hostname.out",
+		Command:     "hostname",
+		Args:        []string{},
+	},
+	// Top (macOS-specific flags)
+	{
+		Name:        "top",
+		ArchivePath: "system/top.out",
+		Command:     "top",
+		Args:        []string{"-l", "1"},
+	},
 	// CPU/Memory information via sysctl
 	{
 		Name:        "sysctl-cpu",

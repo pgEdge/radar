@@ -70,12 +70,6 @@ var sharedCommandTasks = []SimpleCommandTask{
 		Args:        []string{},
 	},
 	{
-		Name:        "hostname",
-		ArchivePath: "system/hostname.out",
-		Command:     "hostname",
-		Args:        []string{"-f"},
-	},
-	{
 		Name:        "locale",
 		ArchivePath: "system/locale.out",
 		Command:     "locale",
@@ -118,12 +112,6 @@ var sharedCommandTasks = []SimpleCommandTask{
 		Args:        []string{"auxww"},
 	},
 	{
-		Name:        "top",
-		ArchivePath: "system/top.out",
-		Command:     "top",
-		Args:        []string{"-l", "1"},
-	},
-	{
 		Name:        "uname",
 		ArchivePath: "system/uname.out",
 		Command:     "uname",
@@ -139,11 +127,6 @@ var sharedCommandTasks = []SimpleCommandTask{
 
 // Cross-platform file read tasks
 var sharedFileTasks = []SimpleFileTask{
-	{
-		Name:        "fstab",
-		ArchivePath: "system/fstab.out",
-		Path:        "/etc/fstab",
-	},
 	{
 		Name:        "hosts",
 		ArchivePath: "system/hosts.out",
