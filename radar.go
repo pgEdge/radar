@@ -79,6 +79,32 @@ type CollectionTask struct {
 	Collector   func(*Config, io.Writer) error
 }
 
+// lazyZipWriter defers ZIP entry creation until first Write()
+// This prevents empty files in the archive when collectors produce no output
+type lazyZipWriter struct {
+	zipWriter *zip.Writer
+	header    *zip.FileHeader
+	writer    io.Writer // nil until first Write()
+}
+
+func (w *lazyZipWriter) Write(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil // Ignore empty writes
+	}
+	if w.writer == nil {
+		var err error
+		w.writer, err = w.zipWriter.CreateHeader(w.header)
+		if err != nil {
+			return 0, err
+		}
+	}
+	return w.writer.Write(p)
+}
+
+func (w *lazyZipWriter) WroteAny() bool {
+	return w.writer != nil
+}
+
 // SkipError indicates a collector was skipped (tool missing, no data, not applicable)
 type SkipError struct {
 	Reason string
@@ -358,25 +384,28 @@ func collect(cfg *Config, zipWriter *zip.Writer, tasks []CollectionTask) int {
 	collected := 0
 
 	for _, task := range tasks {
-		// Create ZIP entry with current timestamp
 		header := &zip.FileHeader{
 			Name:     task.ArchivePath,
 			Method:   DefaultCompressionMethod,
 			Modified: time.Now(),
 		}
-		writer, err := zipWriter.CreateHeader(header)
+
+		// Use lazy writer - only creates ZIP entry on first Write()
+		lazy := &lazyZipWriter{zipWriter: zipWriter, header: header}
+
+		err := task.Collector(cfg, lazy)
 		if err != nil {
-			// Critical error - report it
-			errorLog.Printf("Failed to create archive entry: %v", err)
+			// Silently skip - don't spam user with errors
+			if cfg.VeryVerbose {
+				infoLog.Printf("⊘ %s (unavailable)", task.Name)
+			}
 			continue
 		}
 
-		// Collect data
-		err = task.Collector(cfg, writer)
-		if err != nil {
-			// Silently skip - don't spam customer with errors
+		// Only count if something was actually written
+		if !lazy.WroteAny() {
 			if cfg.VeryVerbose {
-				infoLog.Printf("⊘ %s (unavailable)", task.Name)
+				infoLog.Printf("⊘ %s (empty)", task.Name)
 			}
 			continue
 		}
