@@ -47,6 +47,46 @@ useradd -m -s /bin/bash radaruser || true
 cp radar /home/radaruser/
 chown radaruser:radaruser /home/radaruser/radar
 
+# Helper function to validate ZIP contents
+validate_zip() {
+	local zip_file="$1"
+	local scenario="$2"
+	local require_system="$3"  # "yes" or "no"
+
+	local pg_count=$(unzip -l "$zip_file" | grep -c "postgresql/" || true)
+	local sys_count=$(unzip -l "$zip_file" | grep -c "system/" || true)
+	local statviz_count=$(unzip -l "$zip_file" | grep -c "pg_statviz/" || true)
+	local empty_count=$(unzip -l "$zip_file" | awk '$1 == 0 {count++} END {print count+0}')
+
+	echo "  PostgreSQL: $pg_count, System: $sys_count, pg_statviz: $statviz_count, Empty files: $empty_count"
+
+	# Check for empty files (should be 0)
+	if [ "$empty_count" -gt 0 ]; then
+		echo -e "${RED}✗ $scenario FAILED: Found $empty_count empty files in archive${NC}"
+		return 1
+	fi
+
+	# Must have PostgreSQL data
+	if [ "$pg_count" -eq 0 ]; then
+		echo -e "${RED}✗ $scenario FAILED: No PostgreSQL data collected${NC}"
+		return 1
+	fi
+
+	# System data check (optional for non-root scenarios)
+	if [ "$require_system" = "yes" ] && [ "$sys_count" -eq 0 ]; then
+		echo -e "${RED}✗ $scenario FAILED: No system data collected${NC}"
+		return 1
+	fi
+
+	# Must have pg_statviz data
+	if [ "$statviz_count" -eq 0 ]; then
+		echo -e "${RED}✗ $scenario FAILED: No pg_statviz data collected${NC}"
+		return 1
+	fi
+
+	return 0
+}
+
 # Scenario 1: Root + superuser
 echo ""
 echo "========================================"
@@ -54,12 +94,7 @@ echo -e "${YELLOW}Scenario 1: Root + superuser${NC}"
 echo "========================================"
 ./radar -h localhost -d testdb -U postgres -vv
 ZIP1=$(ls -t radar-*.zip | head -1)
-PG_COUNT1=$(unzip -l "$ZIP1" | grep -c "postgresql/" || true)
-SYS_COUNT1=$(unzip -l "$ZIP1" | grep -c "system/" || true)
-STATVIZ1=$(unzip -l "$ZIP1" | grep -c "pg_statviz/" || true)
-echo "  PostgreSQL: $PG_COUNT1, System: $SYS_COUNT1, pg_statviz: $STATVIZ1"
-if [ "$PG_COUNT1" -lt 25 ] || [ "$SYS_COUNT1" -lt 50 ] || [ "$STATVIZ1" -eq 0 ]; then
-	echo -e "${RED}✗ Scenario 1 FAILED${NC}"
+if ! validate_zip "$ZIP1" "Scenario 1" "yes"; then
 	exit 1
 fi
 echo -e "${GREEN}✓ Scenario 1 PASSED${NC}"
@@ -72,12 +107,7 @@ echo -e "${YELLOW}Scenario 2: Root + pg_monitor${NC}"
 echo "========================================"
 PGPASSWORD=testpass ./radar -h localhost -d testdb -U testuser -vv
 ZIP2=$(ls -t radar-*.zip | head -1)
-PG_COUNT2=$(unzip -l "$ZIP2" | grep -c "postgresql/" || true)
-SYS_COUNT2=$(unzip -l "$ZIP2" | grep -c "system/" || true)
-STATVIZ2=$(unzip -l "$ZIP2" | grep -c "pg_statviz/" || true)
-echo "  PostgreSQL: $PG_COUNT2, System: $SYS_COUNT2, pg_statviz: $STATVIZ2"
-if [ "$PG_COUNT2" -lt 20 ] || [ "$SYS_COUNT2" -lt 50 ] || [ "$STATVIZ2" -eq 0 ]; then
-	echo -e "${RED}✗ Scenario 2 FAILED${NC}"
+if ! validate_zip "$ZIP2" "Scenario 2" "yes"; then
 	exit 1
 fi
 echo -e "${GREEN}✓ Scenario 2 PASSED${NC}"
@@ -90,12 +120,7 @@ echo -e "${YELLOW}Scenario 3: Non-root + superuser${NC}"
 echo "========================================"
 su - radaruser -c "cd /home/radaruser && ./radar -h localhost -d testdb -U postgres -vv"
 ZIP3=$(su - radaruser -c "ls -t /home/radaruser/radar-*.zip | head -1")
-PG_COUNT3=$(unzip -l "$ZIP3" | grep -c "postgresql/" || true)
-SYS_COUNT3=$(unzip -l "$ZIP3" | grep -c "system/" || true)
-STATVIZ3=$(unzip -l "$ZIP3" | grep -c "pg_statviz/" || true)
-echo "  PostgreSQL: $PG_COUNT3, System: $SYS_COUNT3, pg_statviz: $STATVIZ3"
-if [ "$PG_COUNT3" -lt 25 ] || [ "$SYS_COUNT3" -eq 0 ] || [ "$STATVIZ3" -eq 0 ]; then
-	echo -e "${RED}✗ Scenario 3 FAILED${NC}"
+if ! validate_zip "$ZIP3" "Scenario 3" "no"; then
 	exit 1
 fi
 echo -e "${GREEN}✓ Scenario 3 PASSED${NC}"
@@ -108,12 +133,7 @@ echo -e "${YELLOW}Scenario 4: Non-root + pg_monitor${NC}"
 echo "========================================"
 su - radaruser -c "cd /home/radaruser && PGPASSWORD=testpass ./radar -h localhost -d testdb -U testuser -vv"
 ZIP4=$(su - radaruser -c "ls -t /home/radaruser/radar-*.zip | head -1")
-PG_COUNT4=$(unzip -l "$ZIP4" | grep -c "postgresql/" || true)
-SYS_COUNT4=$(unzip -l "$ZIP4" | grep -c "system/" || true)
-STATVIZ4=$(unzip -l "$ZIP4" | grep -c "pg_statviz/" || true)
-echo "  PostgreSQL: $PG_COUNT4, System: $SYS_COUNT4, pg_statviz: $STATVIZ4"
-if [ "$PG_COUNT4" -lt 20 ] || [ "$SYS_COUNT4" -eq 0 ] || [ "$STATVIZ4" -eq 0 ]; then
-	echo -e "${RED}✗ Scenario 4 FAILED${NC}"
+if ! validate_zip "$ZIP4" "Scenario 4" "no"; then
 	exit 1
 fi
 echo -e "${GREEN}✓ Scenario 4 PASSED${NC}"

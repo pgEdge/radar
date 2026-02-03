@@ -159,6 +159,7 @@ jobs:
                   else
                       sudo -u postgres psql -c "CREATE USER testpguser PASSWORD 'testpass';"
                       sudo -u postgres psql -d testdb -c "GRANT CONNECT ON DATABASE testdb TO testpguser;"
+                      sudo -u postgres psql -d testdb -c "GRANT pg_monitor TO testpguser;"
                       sudo -u postgres psql -d testdb -c "GRANT USAGE ON SCHEMA pgstatviz TO testpguser;"
                       sudo -u postgres psql -d testdb -c "GRANT SELECT ON ALL TABLES IN SCHEMA pgstatviz TO testpguser;"
                   fi
@@ -215,6 +216,15 @@ jobs:
                       exit 1
                   fi
                   echo "✓ pg_statviz data found"
+
+                  echo "=== Checking for empty files ==="
+                  EMPTY_COUNT=$(unzip -l "$ZIPFILE" | awk '$1 == 0 {count++} END {print count+0}')
+                  if [ "$EMPTY_COUNT" -gt 0 ]; then
+                      echo "ERROR: Found $EMPTY_COUNT empty files in archive"
+                      unzip -l "$ZIPFILE" | awk '$1 == 0'
+                      exit 1
+                  fi
+                  echo "✓ No empty files found"
 
                   echo "=== Integration test PASSED ==="
 
@@ -308,4 +318,13 @@ jobs:
                       exit 1
                   fi
                   echo "✓ System data found"
+
+                  # Check for empty files
+                  EMPTY_COUNT=$(unzip -l "$ZIPFILE" | awk '$1 == 0 {count++} END {print count+0}')
+                  if [ "$EMPTY_COUNT" -gt 0 ]; then
+                      echo "ERROR: Found $EMPTY_COUNT empty files in archive"
+                      unzip -l "$ZIPFILE" | awk '$1 == 0'
+                      exit 1
+                  fi
+                  echo "✓ No empty files found"
                   echo "=== macOS test PASSED ==="
