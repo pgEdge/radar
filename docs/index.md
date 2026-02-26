@@ -129,21 +129,21 @@ For a complete reference of all collected data, see [data.md](data.md).
 
 **System Information**
 
-- **Block devices & storage**: `blockdev`, `df`, `fstab`, `io-schedulers`, `iostat`, `lsblk`, `ls`, `mount`, `mounts`, `nfsiostat`, `swaps`
-- **CPU & performance**: `cpuinfo`, `energy_perf_bias`, `intel_pstate`, `loadavg`, `mpstat`, `sar`, `scaling_available_governors`, `scaling_driver`, `scaling_governor`, `top`, `uptime`, `vmstat`
+- **Block devices & storage**: `blockdev`, `df`, `diskstats`, `fstab`, `io-queue-depth`, `io-schedulers`, `iostat`, `lsblk`, `ls`, `mount`, `mounts`, `nfsiostat`, `swaps`
+- **CPU & performance**: `cpuinfo`, `clocksource`, `energy_perf_bias`, `free`, `intel_pstate`, `loadavg`, `lscpu`, `mpstat`, `numactl`, `numastat`, `sar`, `scaling_available_governors`, `scaling_driver`, `scaling_governor`, `top`, `uptime`, `vmstat`
 - **Memory & kernel**: `dmesg`, `ipcs`, `meminfo`, `pressure/cpu`, `pressure/io`, `pressure/memory`, `sysctl`, `transparent_hugepage`
-- **Operating system**: `apt`, `dnf`, `dpkg`, `hostname`, `hosts`, `limits.conf`, `locale`, `locale.conf`, `localectl`, `lsmod`, `lspci`, `machine-id`, `os-release`, `ps`, `rpm`, `system-release`, `systemctl`, `systemd-detect-virt`, `tuned-adm`, `uname`, `yum`
-- **Network**: `ifconfig`, `ip`
+- **Operating system**: `apt`, `dnf`, `dpkg`, `hostname`, `hosts`, `limits.conf`, `locale`, `locale.conf`, `localectl`, `lsmod`, `lspci`, `machine-id`, `os-release`, `ps`, `rpm`, `system-release`, `systemctl`, `systemd-detect-virt`, `timedatectl`, `tuned-adm`, `uname`, `yum`
+- **Network**: `ifconfig`, `ip`, `netstat`, `resolv.conf`, `ss`
 - **Security**: `fips-mode-setup`, `openssl`, `sestatus`, `update-crypto-policies`
 
 **PostgreSQL Instance**
 
-- **Configuration & files**: `pg_db_role_setting`, `pg_hba.conf`, `pg_hba_file_rules`, `pg_ident.conf`, `pg_settings`, `pg_tablespace`, `postgresql.auto.conf`, `postgresql.conf`, `recovery.conf`, `recovery.done`
-- **Activity & monitoring**: `pg_locks`, `pg_postmaster_start_time()`, `pg_prepared_xacts`, `pg_stat_activity`
-- **Statistics views**: `pg_stat_archiver`, `pg_stat_bgwriter`, `pg_stat_checkpointer` (PG17+), `pg_stat_io` (PG16+), `pg_stat_slru`, `pg_stat_wal` (PG14+)
-- **Replication**: `pg_replication_origin_status`, `pg_replication_slots`, `pg_stat_replication`, `pg_subscription`
-- **Progress tracking**: `pg_stat_progress_analyze`, `pg_stat_progress_basebackup`, `pg_stat_progress_copy`, `pg_stat_progress_vacuum`
-- **Catalog**: `pg_available_extensions`, `pg_database`, `pg_roles`, `version()`
+- **Configuration & files**: `pg_db_role_setting`, `pg_file_settings`, `pg_hba.conf`, `pg_hba_file_rules`, `pg_ident.conf`, `pg_settings`, `pg_tablespace`, `postgresql.auto.conf`, `postgresql.conf`, `recovery.conf`, `recovery.done`
+- **Activity & monitoring**: `pg_locks`, `pg_postmaster_start_time()`, `pg_prepared_xacts`, `pg_shmem_allocations`, `pg_stat_activity`
+- **Statistics views**: `pg_stat_archiver`, `pg_stat_bgwriter`, `pg_stat_checkpointer` (PG17+), `pg_stat_database_conflicts`, `pg_stat_io` (PG16+), `pg_stat_slru`, `pg_stat_wal` (PG14+), `pg_stat_wal_receiver`
+- **Replication & WAL**: `pg_current_wal_lsn()`, `pg_replication_origin_status`, `pg_replication_slots`, `pg_stat_replication`, `pg_subscription`
+- **Progress tracking**: `pg_stat_progress_analyze`, `pg_stat_progress_basebackup`, `pg_stat_progress_cluster`, `pg_stat_progress_copy`, `pg_stat_progress_create_index`, `pg_stat_progress_vacuum`
+- **Catalog**: `pg_available_extensions`, `pg_database`, `pg_database_size()`, `pg_roles`, `pg_tablespace_size()`, `version()`
 
 **Per-Database**
 
