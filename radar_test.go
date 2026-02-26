@@ -452,6 +452,149 @@ func TestCollectWithFailures(t *testing.T) {
 	// Note: We no longer track failed count separately - tasks that fail are simply not collected
 }
 
+// TestNoDuplicateSystemArchivePaths verifies no duplicate archive paths in system tasks
+func TestNoDuplicateSystemArchivePaths(t *testing.T) {
+	tasks := getSystemTasks()
+	seen := make(map[string]string)
+	for _, task := range tasks {
+		if prev, exists := seen[task.ArchivePath]; exists {
+			t.Errorf("duplicate archive path %q: %q and %q", task.ArchivePath, prev, task.Name)
+		}
+		seen[task.ArchivePath] = task.Name
+	}
+}
+
+// TestNoDuplicatePostgreSQLArchivePaths verifies no duplicate archive paths in PostgreSQL tasks
+func TestNoDuplicatePostgreSQLArchivePaths(t *testing.T) {
+	tasks := getPostgreSQLTasks(nil)
+	seen := make(map[string]string)
+	for _, task := range tasks {
+		if prev, exists := seen[task.ArchivePath]; exists {
+			t.Errorf("duplicate archive path %q: %q and %q", task.ArchivePath, prev, task.Name)
+		}
+		seen[task.ArchivePath] = task.Name
+	}
+}
+
+// TestPerDatabaseTasksStructure verifies all per-database tasks have required fields
+func TestPerDatabaseTasksStructure(t *testing.T) {
+	for i, task := range perDatabaseQueryTasks {
+		if task.Name == "" {
+			t.Errorf("perDatabaseQueryTasks[%d] missing Name", i)
+		}
+		if task.ArchivePath == "" {
+			t.Errorf("perDatabaseQueryTasks[%d] (%s) missing ArchivePath", i, task.Name)
+		}
+		if task.Query == "" {
+			t.Errorf("perDatabaseQueryTasks[%d] (%s) missing Query", i, task.Name)
+		}
+		if !strings.Contains(task.ArchivePath, "%s") {
+			t.Errorf("perDatabaseQueryTasks[%d] (%s) ArchivePath missing %%s placeholder: %s", i, task.Name, task.ArchivePath)
+		}
+	}
+}
+
+// TestPgStatvizTasksStructure verifies all pg_statviz tasks have required fields
+func TestPgStatvizTasksStructure(t *testing.T) {
+	for i, task := range pgStatvizQueryTasks {
+		if task.Name == "" {
+			t.Errorf("pgStatvizQueryTasks[%d] missing Name", i)
+		}
+		if task.ArchivePath == "" {
+			t.Errorf("pgStatvizQueryTasks[%d] (%s) missing ArchivePath", i, task.Name)
+		}
+		if task.Query == "" {
+			t.Errorf("pgStatvizQueryTasks[%d] (%s) missing Query", i, task.Name)
+		}
+		if !strings.Contains(task.ArchivePath, "%s") {
+			t.Errorf("pgStatvizQueryTasks[%d] (%s) ArchivePath missing %%s placeholder: %s", i, task.Name, task.ArchivePath)
+		}
+	}
+}
+
+// TestLazyZipWriter verifies the lazy ZIP writer prevents empty entries
+func TestLazyZipWriter(t *testing.T) {
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+
+	header := &zip.FileHeader{
+		Name:   "test.txt",
+		Method: zip.Deflate,
+	}
+
+	// Test: no writes should not create an entry
+	lazy := &lazyZipWriter{zipWriter: zw, header: header}
+	if lazy.WroteAny() {
+		t.Error("WroteAny() should be false before any writes")
+	}
+
+	// Empty write should not create entry
+	n, err := lazy.Write([]byte{})
+	if err != nil {
+		t.Errorf("empty Write returned error: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("empty Write returned n=%d, want 0", n)
+	}
+	if lazy.WroteAny() {
+		t.Error("WroteAny() should be false after empty write")
+	}
+
+	// Real write should create entry
+	n, err = lazy.Write([]byte("hello"))
+	if err != nil {
+		t.Errorf("Write returned error: %v", err)
+	}
+	if n != 5 {
+		t.Errorf("Write returned n=%d, want 5", n)
+	}
+	if !lazy.WroteAny() {
+		t.Error("WroteAny() should be true after write")
+	}
+
+	if err := zw.Close(); err != nil {
+		t.Fatalf("failed to close zip writer: %v", err)
+	}
+
+	// Verify the ZIP contains the entry
+	reader, err := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	if err != nil {
+		t.Fatalf("failed to open zip reader: %v", err)
+	}
+	if len(reader.File) != 1 {
+		t.Errorf("expected 1 file in zip, got %d", len(reader.File))
+	}
+	if len(reader.File) > 0 && reader.File[0].Name != "test.txt" {
+		t.Errorf("expected file name 'test.txt', got %q", reader.File[0].Name)
+	}
+}
+
+// TestLazyZipWriterNoWrite verifies no entry is created when nothing is written
+func TestLazyZipWriterNoWrite(t *testing.T) {
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+
+	header := &zip.FileHeader{
+		Name:   "should_not_exist.txt",
+		Method: zip.Deflate,
+	}
+
+	lazy := &lazyZipWriter{zipWriter: zw, header: header}
+	_ = lazy // not used, no writes
+
+	if err := zw.Close(); err != nil {
+		t.Fatalf("failed to close zip writer: %v", err)
+	}
+
+	reader, err := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	if err != nil {
+		t.Fatalf("failed to open zip reader: %v", err)
+	}
+	if len(reader.File) != 0 {
+		t.Errorf("expected 0 files in zip, got %d", len(reader.File))
+	}
+}
+
 // TestSkipFlagValidation tests validation of skip flag combinations
 func TestSkipFlagValidation(t *testing.T) {
 	// Save original os.Args and restore after test
