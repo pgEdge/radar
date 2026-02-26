@@ -13,14 +13,18 @@
 package main
 
 // System command tasks (sorted alphabetically by name)
-// Note: df, dmesg, locale, locale-all, mount, openssl-ciphers, openssl-engines,
-// openssl-version, ps, uname, sysctl are in sharedCommandTasks
 var systemCommandTasks = []SimpleCommandTask{
 	{
 		Name:        "dmesg-t",
 		ArchivePath: "system/dmesg_t.out",
 		Command:     "dmesg",
 		Args:        []string{"-T"},
+	},
+	{
+		Name:        "free",
+		ArchivePath: "system/free.out",
+		Command:     "free",
+		Args:        []string{"-h"},
 	},
 	{
 		Name:        "hostname",
@@ -77,6 +81,12 @@ var systemCommandTasks = []SimpleCommandTask{
 		Args:        []string{},
 	},
 	{
+		Name:        "lscpu",
+		ArchivePath: "system/lscpu.out",
+		Command:     "lscpu",
+		Args:        []string{},
+	},
+	{
 		Name:        "lsdevmapper",
 		ArchivePath: "system/lsdevmapper.out",
 		Command:     "ls",
@@ -101,10 +111,28 @@ var systemCommandTasks = []SimpleCommandTask{
 		Args:        []string{"-P", "ALL", "1", "5"},
 	},
 	{
+		Name:        "netstat-stats",
+		ArchivePath: "system/netstat_stats.out",
+		Command:     "netstat",
+		Args:        []string{"-s"},
+	},
+	{
 		Name:        "nfsiostat",
 		ArchivePath: "system/nfsiostat.out",
 		Command:     "nfsiostat",
 		Args:        []string{},
+	},
+	{
+		Name:        "numactl",
+		ArchivePath: "system/numactl.out",
+		Command:     "numactl",
+		Args:        []string{"--hardware"},
+	},
+	{
+		Name:        "numastat",
+		ArchivePath: "system/numastat.out",
+		Command:     "numastat",
+		Args:        []string{"-m"},
 	},
 	{
 		Name:        "openssl-crypto-policies-isapplied",
@@ -155,6 +183,12 @@ var systemCommandTasks = []SimpleCommandTask{
 		Args:        []string{"list", "installed", "*postgres*"},
 	},
 	{
+		Name:        "pg-service-status",
+		ArchivePath: "system/systemd/postgresql-status.out",
+		Command:     "sh",
+		Args:        []string{"-c", "systemctl status 'postgresql*' 2>/dev/null || systemctl status 'postgres*' 2>/dev/null"},
+	},
+	{
 		Name:        "sar",
 		ArchivePath: "system/sar.out",
 		Command:     "sar",
@@ -167,10 +201,28 @@ var systemCommandTasks = []SimpleCommandTask{
 		Args:        []string{},
 	},
 	{
+		Name:        "ss-listeners",
+		ArchivePath: "system/ss_listeners.out",
+		Command:     "ss",
+		Args:        []string{"-tunlp"},
+	},
+	{
+		Name:        "ss-summary",
+		ArchivePath: "system/ss_summary.out",
+		Command:     "ss",
+		Args:        []string{"-s"},
+	},
+	{
 		Name:        "systemctl-list-units",
 		ArchivePath: "system/systemd/list-units.out",
 		Command:     "systemctl",
 		Args:        []string{"list-units", "--all"},
+	},
+	{
+		Name:        "timedatectl",
+		ArchivePath: "system/timedatectl.out",
+		Command:     "timedatectl",
+		Args:        []string{"status"},
 	},
 	{
 		Name:        "top",
@@ -195,6 +247,12 @@ var systemCommandTasks = []SimpleCommandTask{
 		ArchivePath: "system/vmstat-command.out",
 		Command:     "vmstat",
 		Args:        []string{"1", "10"},
+	},
+	{
+		Name:        "clocksource",
+		ArchivePath: "system/sys/clocksource.out",
+		Command:     "sh",
+		Args:        []string{"-c", "cat /sys/devices/system/clocksource/clocksource0/current_clocksource 2>/dev/null"},
 	},
 	{
 		Name:        "cpu_scaling_available_governors",
@@ -227,6 +285,12 @@ var systemCommandTasks = []SimpleCommandTask{
 		Args:        []string{"-c", "cat /sys/devices/system/cpu/intel_pstate/* 2>/dev/null"},
 	},
 	{
+		Name:        "io-queue-depth",
+		ArchivePath: "system/io_queue_depth.out",
+		Command:     "sh",
+		Args:        []string{"-c", "for f in /sys/block/*/queue/nr_requests; do [ -f \"$f\" ] && echo \"$(basename $(dirname $(dirname $f))): $(cat $f)\"; done"},
+	},
+	{
 		Name:        "io-schedulers",
 		ArchivePath: "system/io_schedulers.out",
 		Command:     "sh",
@@ -252,6 +316,11 @@ var systemFileTasks = []SimpleFileTask{
 		Name:        "cpuinfo",
 		ArchivePath: "system/proc/cpuinfo.out",
 		Path:        "/proc/cpuinfo",
+	},
+	{
+		Name:        "diskstats",
+		ArchivePath: "system/proc/diskstats.out",
+		Path:        "/proc/diskstats",
 	},
 	{
 		Name:        "fstab",

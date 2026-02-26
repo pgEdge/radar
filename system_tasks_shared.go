@@ -132,4 +132,9 @@ var sharedFileTasks = []SimpleFileTask{
 		ArchivePath: "system/hosts.out",
 		Path:        "/etc/hosts",
 	},
+	{
+		Name:        "resolv-conf",
+		ArchivePath: "system/resolv_conf.out",
+		Path:        "/etc/resolv.conf",
+	},
 }
