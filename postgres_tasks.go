@@ -233,6 +233,21 @@ WHERE state != 'idle'`,
 		Query:       "SELECT * FROM pg_stat_slru ORDER BY name",
 	},
 	{
+		Name:        "stat_statements_calls",
+		ArchivePath: "postgresql/stat_statements_calls.tsv",
+		Query:       "SELECT userid, dbid, query, calls, total_exec_time, mean_exec_time, max_exec_time, rows FROM pg_stat_statements ORDER BY calls DESC LIMIT 100",
+	},
+	{
+		Name:        "stat_statements_max_time",
+		ArchivePath: "postgresql/stat_statements_max_time.tsv",
+		Query:       "SELECT userid, dbid, query, calls, total_exec_time, mean_exec_time, max_exec_time, rows FROM pg_stat_statements ORDER BY max_exec_time DESC LIMIT 100",
+	},
+	{
+		Name:        "stat_statements_total_time",
+		ArchivePath: "postgresql/stat_statements_total_time.tsv",
+		Query:       "SELECT userid, dbid, query, calls, total_exec_time, mean_exec_time, max_exec_time, rows FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 100",
+	},
+	{
 		Name:        "stat_wal",
 		ArchivePath: "postgresql/stat_wal.tsv",
 		Query:       "SELECT * FROM pg_stat_wal",

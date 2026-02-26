@@ -200,6 +200,9 @@ Instance-level PostgreSQL collectors. Files stored in `postgresql/`.
 | `postgresql/stat_progress_create_index.tsv` | `pg_stat_progress_create_index` | CREATE INDEX progress (PG12+) |
 | `postgresql/stat_progress_vacuum.tsv` | `pg_stat_progress_vacuum` | VACUUM progress (PG9.6+) |
 | `postgresql/stat_slru.tsv` | `pg_stat_slru` | SLRU cache statistics |
+| `postgresql/stat_statements_calls.tsv` | `pg_stat_statements` | Top 100 queries by call count |
+| `postgresql/stat_statements_max_time.tsv` | `pg_stat_statements` | Top 100 queries by max execution time |
+| `postgresql/stat_statements_total_time.tsv` | `pg_stat_statements` | Top 100 queries by total execution time |
 | `postgresql/stat_wal.tsv` | `pg_stat_wal` | WAL statistics (PG14+) |
 | `postgresql/subscriptions.tsv` | `pg_subscription` | Logical replication subscriptions |
 | `postgresql/tablespace_sizes.tsv` | `pg_tablespace_size()` | Tablespace disk usage |
