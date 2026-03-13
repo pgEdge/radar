@@ -219,7 +219,7 @@ radar-hostname-20260115-133700.zip
 
 - **System**: Linux with standard utilities (lsblk, mount, df, ps, etc.)
 - **PostgreSQL**: Version 12+ (some features require 13+, 14+, or 16+)
-- **Go**: 1.23+ (for building from source - see [CONTRIBUTING.md](CONTRIBUTING.md))
+- **Go**: 1.24+ (for building from source - see [CONTRIBUTING.md](CONTRIBUTING.md))
 
 ## Performance
 
