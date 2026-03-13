@@ -112,7 +112,7 @@ These collectors only run on Linux systems.
 
 ### Cgroup v2 Resource Limits (Linux)
 
-Always collected on Linux. Shows actual container resource limits instead of host values.
+Attempted on Linux (skipped if unavailable). Shows actual container resource limits instead of host values.
 
 | File | Source | Description |
 |------|--------|-------------|
@@ -129,7 +129,7 @@ Always collected on Linux. Shows actual container resource limits instead of hos
 
 ### Cgroup v1 Resource Limits (Linux)
 
-Always collected on Linux. Present on older kernels (pre-cgroup v2 unified hierarchy).
+Attempted on Linux (skipped if unavailable). Present on older kernels (pre-cgroup v2 unified hierarchy).
 
 | File | Source | Description |
 |------|--------|-------------|
@@ -143,7 +143,7 @@ Always collected on Linux. Present on older kernels (pre-cgroup v2 unified hiera
 
 ### Cloud/Hardware Identity (Linux)
 
-Always collected on Linux. Identifies cloud provider and instance type via DMI data.
+Attempted on Linux (skipped if unavailable). Identifies cloud provider and instance type via DMI data.
 
 | File | Source | Description |
 |------|--------|-------------|
@@ -154,7 +154,7 @@ Always collected on Linux. Identifies cloud provider and instance type via DMI d
 
 ### Container Identity (Linux)
 
-Always collected on Linux. Helps identify container runtime and environment.
+Attempted on Linux (skipped if unavailable). Helps identify container runtime and environment.
 
 | File | Source | Description |
 |------|--------|-------------|
