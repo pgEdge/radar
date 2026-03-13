@@ -23,5 +23,8 @@ func getSystemTasks() []CollectionTask {
 	tasks = append(tasks, buildCommandTasks("system", sharedCommandTasks)...)
 	tasks = append(tasks, buildFileTasks("system", sharedFileTasks)...)
 
+	// Add container-specific tasks when running inside a container
+	tasks = append(tasks, getContainerTasks()...)
+
 	return tasks
 }
