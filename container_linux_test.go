@@ -13,13 +13,20 @@
 package main
 
 import (
+	"os"
 	"testing"
 )
 
 func TestIsContainer(t *testing.T) {
-	// isContainer should return a boolean without panicking
-	result := isContainer()
-	t.Logf("isContainer() = %v", result)
+	_, err := os.Stat("/.dockerenv")
+	dockerExists := err == nil
+	got := isContainer()
+	if dockerExists && !got {
+		t.Fatalf("isContainer() = false, want true when /.dockerenv exists")
+	}
+	if !dockerExists && got {
+		t.Fatalf("isContainer() = true, want false on non-container host")
+	}
 }
 
 func TestContainerCommandTasksStructure(t *testing.T) {
