@@ -87,6 +87,7 @@ type lazyZipWriter struct {
 	writer    io.Writer // nil until first Write()
 }
 
+// Write defers ZIP entry creation until first non-empty write.
 func (w *lazyZipWriter) Write(p []byte) (int, error) {
 	if len(p) == 0 {
 		return 0, nil // Ignore empty writes
@@ -101,6 +102,7 @@ func (w *lazyZipWriter) Write(p []byte) (int, error) {
 	return w.writer.Write(p)
 }
 
+// WroteAny returns true if any data was written.
 func (w *lazyZipWriter) WroteAny() bool {
 	return w.writer != nil
 }
@@ -110,6 +112,7 @@ type SkipError struct {
 	Reason string
 }
 
+// Error returns the skip reason.
 func (e SkipError) Error() string {
 	return e.Reason
 }
@@ -178,6 +181,7 @@ var (
 	errorLog = log.New(os.Stderr, "ERROR: ", 0)
 )
 
+// main is the radar entry point.
 func main() {
 	cfg, err := parseConfig()
 	if err != nil {
@@ -251,6 +255,7 @@ func main() {
 	}
 }
 
+// parseConfig parses command-line flags into a Config.
 func parseConfig() (*Config, error) {
 	cfg := &Config{}
 
@@ -314,6 +319,7 @@ func parseConfig() (*Config, error) {
 	return cfg, nil
 }
 
+// ConnectionString builds a PostgreSQL connection string.
 func (c *Config) ConnectionString() string {
 	params := []string{
 		fmt.Sprintf("host=%s", c.Host),
@@ -330,6 +336,7 @@ func (c *Config) ConnectionString() string {
 	return strings.Join(params, " ")
 }
 
+// initPostgreSQL opens and verifies the PostgreSQL connection.
 func initPostgreSQL(cfg *Config) error {
 	db, err := sql.Open("postgres", cfg.ConnectionString())
 	if err != nil {
@@ -343,6 +350,8 @@ func initPostgreSQL(cfg *Config) error {
 	cfg.DB = db
 	return nil
 }
+
+// collectAll runs all collection tasks and writes results to the ZIP archive.
 func collectAll(cfg *Config, zipWriter *zip.Writer) int {
 	collected := 0
 
