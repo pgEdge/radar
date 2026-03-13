@@ -29,7 +29,7 @@ radar uses the following exit codes:
 
 ### Prerequisites
 
-- **Go**: 1.23 or higher
+- **Go**: 1.24 or higher
 - **Git**: For version control
 - **golangci-lint**: For linting (install via `go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest`)
 - **Docker**: For integration testing (optional but recommended)

@@ -12,6 +12,11 @@
 
 package main
 
+// getContainerTasks is nil on macOS (container detection is Linux-only)
+func getContainerTasks() []CollectionTask {
+	return nil
+}
+
 // macOS-specific command tasks (sorted alphabetically by name)
 var systemCommandTasks = []SimpleCommandTask{
 	{
