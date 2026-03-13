@@ -168,7 +168,7 @@ Only collected when running inside a container (Docker, Kubernetes, LXC, contain
 | File | Source | Description |
 |------|--------|-------------|
 | `system/container/dockerenv.out` | `test -f /.dockerenv` | Docker container detection |
-| `system/container/environment.out` | `env \| grep ...` | Container-related environment variables |
+| `system/container/environment.out` | `env \| grep` | Allowlisted env vars: `HOSTNAME`, `CONTAINER_ID`, `DOCKER_HOST`, `ECS_CLUSTER`, `ECS_CONTAINER_METADATA_URI`, `KUBERNETES_SERVICE_HOST`, `KUBERNETES_SERVICE_PORT`, `KUBERNETES_PORT` |
 | `system/container/k8s_namespace.out` | `/run/secrets/.../namespace` | Kubernetes namespace |
 
 ---

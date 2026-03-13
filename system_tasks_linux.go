@@ -555,18 +555,18 @@ var containerCommandTasks = []SimpleCommandTask{
 		Name:        "container-dockerenv",
 		ArchivePath: "system/container/dockerenv.out",
 		Command:     "sh",
-		Args:        []string{"-c", "test -f /.dockerenv && echo 'Docker container detected'"},
+		Args:        []string{"-c", "test -f /.dockerenv && echo 'Docker container detected' || true"},
 	},
 	{
 		Name:        "container-env",
 		ArchivePath: "system/container/environment.out",
 		Command:     "sh",
-		Args:        []string{"-c", "env | grep -E '^(HOSTNAME|CONTAINER_ID|DOCKER_HOST|ECS_CLUSTER|ECS_CONTAINER_METADATA_URI|KUBERNETES_SERVICE_HOST|KUBERNETES_SERVICE_PORT|KUBERNETES_PORT)=' | sort"},
+		Args:        []string{"-c", "env | grep -E '^(HOSTNAME|CONTAINER_ID|DOCKER_HOST|ECS_CLUSTER|ECS_CONTAINER_METADATA_URI|KUBERNETES_SERVICE_HOST|KUBERNETES_SERVICE_PORT|KUBERNETES_PORT)=' | sort || true"},
 	},
 	{
 		Name:        "container-k8s-namespace",
 		ArchivePath: "system/container/k8s_namespace.out",
 		Command:     "sh",
-		Args:        []string{"-c", "cat /run/secrets/kubernetes.io/serviceaccount/namespace 2>/dev/null"},
+		Args:        []string{"-c", "cat /run/secrets/kubernetes.io/serviceaccount/namespace 2>/dev/null || true"},
 	},
 }
