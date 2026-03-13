@@ -561,7 +561,7 @@ var containerCommandTasks = []SimpleCommandTask{
 		Name:        "container-env",
 		ArchivePath: "system/container/environment.out",
 		Command:     "sh",
-		Args:        []string{"-c", "env | grep -E '^(KUBERNETES_|CONTAINER_|DOCKER_|ECS_|HOSTNAME=)' | sort"},
+		Args:        []string{"-c", "env | grep -E '^(HOSTNAME|CONTAINER_ID|DOCKER_HOST|ECS_CLUSTER|ECS_CONTAINER_METADATA_URI|KUBERNETES_SERVICE_HOST|KUBERNETES_SERVICE_PORT|KUBERNETES_PORT)=' | sort"},
 	},
 	{
 		Name:        "container-k8s-namespace",
