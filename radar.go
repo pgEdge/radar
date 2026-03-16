@@ -21,6 +21,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"strconv"
 	"strings"
 	"time"
 
@@ -289,6 +290,20 @@ func parseConfig() (*Config, error) {
 		}
 	}
 
+	portFlagSet := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "p" {
+			portFlagSet = true
+		}
+	})
+	if !portFlagSet {
+		if pgport := os.Getenv("PGPORT"); pgport != "" {
+			if p, err := strconv.Atoi(pgport); err == nil {
+				cfg.Port = p
+			}
+		}
+	}
+
 	if cfg.Username == "" {
 		cfg.Username = os.Getenv("PGUSER")
 		if cfg.Username == "" {
@@ -310,6 +325,10 @@ func parseConfig() (*Config, error) {
 	// If skipping system data, PostgreSQL connection is mandatory
 	if cfg.SkipSystem && cfg.Database == "" {
 		return nil, fmt.Errorf("--skip-system requires PostgreSQL database (-d flag)")
+	}
+
+	if cfg.Database == "" {
+		cfg.Database = os.Getenv("PGDATABASE")
 	}
 
 	// Default to "postgres" database if not specified and not skipping PostgreSQL

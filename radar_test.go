@@ -619,6 +619,68 @@ func TestLazyZipWriterNoWrite(t *testing.T) {
 	}
 }
 
+// TestPGEnvFallbacks tests PGPORT and PGDATABASE environment variable fallbacks.
+func TestPGEnvFallbacks(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	t.Run("PGPORT fallback", func(t *testing.T) {
+		t.Setenv("PGPORT", "5433")
+		flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
+		os.Args = []string{"radar", "--skip-system", "-d", "testdb"}
+
+		cfg, err := parseConfig()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.Port != 5433 {
+			t.Errorf("expected port 5433, got %d", cfg.Port)
+		}
+	})
+
+	t.Run("PGPORT flag takes precedence", func(t *testing.T) {
+		t.Setenv("PGPORT", "5433")
+		flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
+		os.Args = []string{"radar", "--skip-system", "-d", "testdb", "-p", "5434"}
+
+		cfg, err := parseConfig()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.Port != 5434 {
+			t.Errorf("expected port 5434, got %d", cfg.Port)
+		}
+	})
+
+	t.Run("PGDATABASE fallback", func(t *testing.T) {
+		t.Setenv("PGDATABASE", "envdb")
+		flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
+		os.Args = []string{"radar"}
+
+		cfg, err := parseConfig()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.Database != "envdb" {
+			t.Errorf("expected database 'envdb', got %q", cfg.Database)
+		}
+	})
+
+	t.Run("PGDATABASE flag takes precedence", func(t *testing.T) {
+		t.Setenv("PGDATABASE", "envdb")
+		flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
+		os.Args = []string{"radar", "-d", "flagdb"}
+
+		cfg, err := parseConfig()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.Database != "flagdb" {
+			t.Errorf("expected database 'flagdb', got %q", cfg.Database)
+		}
+	})
+}
+
 // TestSkipFlagValidation tests validation of skip flag combinations
 func TestSkipFlagValidation(t *testing.T) {
 	// Save original os.Args and restore after test
