@@ -416,40 +416,64 @@ func TestCollect(t *testing.T) {
 	}
 }
 
-// Test collect with failures
+// TestCollectWithFailures tests collect error handling
 func TestCollectWithFailures(t *testing.T) {
-	var buf bytes.Buffer
-	zipWriter := zip.NewWriter(&buf)
-	defer closeErrCheck(zipWriter, "zip writer")
+	t.Run("skip error is silent", func(t *testing.T) {
+		var buf bytes.Buffer
+		zipWriter := zip.NewWriter(&buf)
+		defer closeErrCheck(zipWriter, "zip writer")
 
-	cfg := &Config{Verbose: false}
+		var errBuf bytes.Buffer
+		errorLog.SetOutput(&errBuf)
+		defer errorLog.SetOutput(os.Stderr)
 
-	tasks := []CollectionTask{
-		{
-			Category:    "test",
-			Name:        "success",
-			ArchivePath: "test/success.out",
-			Collector: func(cfg *Config, w io.Writer) error {
-				_, err := w.Write([]byte("ok"))
-				return err
-			},
-		},
-		{
-			Category:    "test",
-			Name:        "failure",
-			ArchivePath: "test/fail.out",
-			Collector: func(cfg *Config, w io.Writer) error {
-				return bytes.ErrTooLarge
-			},
-		},
-	}
+		cfg := &Config{Verbose: false}
+		tasks := []CollectionTask{
+			{Category: "test", Name: "skip_task", ArchivePath: "test/skip.out",
+				Collector: func(cfg *Config, w io.Writer) error {
+					return NewSkipError("command not found: fake")
+				}},
+		}
 
-	collected := collect(cfg, zipWriter, tasks)
+		collected := collect(cfg, zipWriter, tasks)
+		if collected != 0 {
+			t.Errorf("expected 0 collected, got %d", collected)
+		}
+		if errBuf.Len() > 0 {
+			t.Errorf("SkipError should not be logged, got: %s", errBuf.String())
+		}
+	})
 
-	if collected != 1 {
-		t.Errorf("expected 1 collected, got %d", collected)
-	}
-	// Note: We no longer track failed count separately - tasks that fail are simply not collected
+	t.Run("real error is logged", func(t *testing.T) {
+		var buf bytes.Buffer
+		zipWriter := zip.NewWriter(&buf)
+		defer closeErrCheck(zipWriter, "zip writer")
+
+		var errBuf bytes.Buffer
+		errorLog.SetOutput(&errBuf)
+		defer errorLog.SetOutput(os.Stderr)
+
+		cfg := &Config{Verbose: false}
+		tasks := []CollectionTask{
+			{Category: "test", Name: "real_error", ArchivePath: "test/fail.out",
+				Collector: func(cfg *Config, w io.Writer) error {
+					return bytes.ErrTooLarge
+				}},
+			{Category: "test", Name: "success", ArchivePath: "test/ok.out",
+				Collector: func(cfg *Config, w io.Writer) error {
+					_, err := w.Write([]byte("ok"))
+					return err
+				}},
+		}
+
+		collected := collect(cfg, zipWriter, tasks)
+		if collected != 1 {
+			t.Errorf("expected 1 collected, got %d", collected)
+		}
+		if !strings.Contains(errBuf.String(), "real_error") {
+			t.Errorf("real error should be logged, got: %s", errBuf.String())
+		}
+	})
 }
 
 // TestNoDuplicateSystemArchivePaths verifies no duplicate archive paths in system tasks

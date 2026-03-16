@@ -13,6 +13,7 @@ package main
 import (
 	"archive/zip"
 	"database/sql"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -246,13 +247,13 @@ func main() {
 		os.Exit(ExitCollectError)
 	}
 
-	// Print professional summary
-	printSummary(totalCollected, outputFile, cfg)
-
 	if totalCollected == 0 {
 		errorLog.Println("No data collected - this may indicate a problem")
 		os.Exit(ExitNoData)
 	}
+
+	// Print summary
+	printSummary(totalCollected, outputFile, cfg)
 }
 
 // parseConfig parses command-line flags into a Config.
@@ -344,6 +345,7 @@ func initPostgreSQL(cfg *Config) error {
 	}
 
 	if err := db.Ping(); err != nil {
+		closeErrCheck(db, "database connection")
 		return err
 	}
 
@@ -404,9 +406,15 @@ func collect(cfg *Config, zipWriter *zip.Writer, tasks []CollectionTask) int {
 
 		err := task.Collector(cfg, lazy)
 		if err != nil {
-			// Silently skip - don't spam user with errors
-			if cfg.VeryVerbose {
-				infoLog.Printf("⊘ %s (unavailable)", task.Name)
+			var skipErr SkipError
+			if errors.As(err, &skipErr) {
+				// Unavailable (command not found, file missing, no data)
+				if cfg.VeryVerbose {
+					infoLog.Printf("⊘ %s (unavailable)", task.Name)
+				}
+			} else {
+				// Error (I/O, permission, SQL)
+				errorLog.Printf("✗ %s: %v", task.Name, err)
 			}
 			continue
 		}
