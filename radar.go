@@ -62,6 +62,7 @@ type Config struct {
 	Username string
 	Password string
 	DataDir  string
+	SSLMode  string
 
 	// Database connection (injected)
 	DB *sql.DB
@@ -271,6 +272,7 @@ func parseConfig() (*Config, error) {
 	flag.StringVar(&cfg.Database, "d", "", "database name")
 	flag.StringVar(&cfg.Username, "U", "", "database user")
 	flag.StringVar(&cfg.DataDir, "data-dir", "", "PostgreSQL data directory")
+	flag.StringVar(&cfg.SSLMode, "sslmode", "prefer", "SSL mode (prefer, disable, require, verify-ca, verify-full)")
 	flag.BoolVar(&cfg.SkipSystem, "skip-system", false, "skip system data collection")
 	flag.BoolVar(&cfg.SkipPostgres, "skip-postgres", false, "skip PostgreSQL data collection")
 	flag.BoolVar(&cfg.Verbose, "v", false, "verbose output (summary)")
@@ -321,6 +323,26 @@ func parseConfig() (*Config, error) {
 		cfg.Database = os.Getenv("PGDATABASE")
 	}
 
+	sslmodeFlagSet := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "sslmode" {
+			sslmodeFlagSet = true
+		}
+	})
+	if !sslmodeFlagSet {
+		if v := os.Getenv("PGSSLMODE"); v != "" {
+			cfg.SSLMode = v
+		}
+	}
+
+	validSSLModes := map[string]bool{
+		"prefer": true, "disable": true, "require": true,
+		"verify-ca": true, "verify-full": true,
+	}
+	if !validSSLModes[cfg.SSLMode] {
+		return nil, fmt.Errorf("invalid sslmode %q: must be one of prefer, disable, require, verify-ca, verify-full", cfg.SSLMode)
+	}
+
 	// Validate skip flag combinations
 	if cfg.SkipSystem && cfg.SkipPostgres {
 		return nil, fmt.Errorf("cannot use --skip-system and --skip-postgres together (nothing would be collected)")
@@ -339,18 +361,28 @@ func parseConfig() (*Config, error) {
 	return cfg, nil
 }
 
-// ConnectionString builds a PostgreSQL connection string.
-func (c *Config) ConnectionString() string {
+// ConnectionString builds a PostgreSQL connection string for the given database.
+// Values containing spaces, quotes, or backslashes are escaped per libpq conventions.
+func (c *Config) ConnectionString(dbname string) string {
+	q := func(v string) string {
+		if !strings.ContainsAny(v, " '\\") {
+			return v
+		}
+		v = strings.ReplaceAll(v, `\`, `\\`)
+		v = strings.ReplaceAll(v, `'`, `\'`)
+		return "'" + v + "'"
+	}
+
 	params := []string{
-		fmt.Sprintf("host=%s", c.Host),
+		"host=" + q(c.Host),
 		fmt.Sprintf("port=%d", c.Port),
-		fmt.Sprintf("dbname=%s", c.Database),
-		fmt.Sprintf("user=%s", c.Username),
-		"sslmode=disable",
+		"dbname=" + q(dbname),
+		"user=" + q(c.Username),
+		"sslmode=" + q(c.SSLMode),
 	}
 
 	if c.Password != "" {
-		params = append(params, fmt.Sprintf("password=%s", c.Password))
+		params = append(params, "password="+q(c.Password))
 	}
 
 	return strings.Join(params, " ")
@@ -358,7 +390,7 @@ func (c *Config) ConnectionString() string {
 
 // initPostgreSQL opens and verifies the PostgreSQL connection.
 func initPostgreSQL(cfg *Config) error {
-	db, err := sql.Open("pgx", cfg.ConnectionString())
+	db, err := sql.Open("pgx", cfg.ConnectionString(cfg.Database))
 	if err != nil {
 		return err
 	}

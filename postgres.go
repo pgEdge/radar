@@ -146,13 +146,7 @@ func generateDatabaseTasks(db *sql.DB) ([]CollectionTask, error) {
 
 // execPGQueryOnDB executes a query on a specific database
 func execPGQueryOnDB(dbname string, cfg *Config, query string, w io.Writer) error {
-	connStr := fmt.Sprintf("host=%s port=%d dbname=%s user=%s sslmode=disable",
-		cfg.Host, cfg.Port, dbname, cfg.Username)
-	if cfg.Password != "" {
-		connStr += fmt.Sprintf(" password=%s", cfg.Password)
-	}
-
-	db, err := sql.Open("pgx", connStr)
+	db, err := sql.Open("pgx", cfg.ConnectionString(dbname))
 	if err != nil {
 		return fmt.Errorf("connecting to %s: %w", dbname, err)
 	}

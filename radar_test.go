@@ -268,13 +268,14 @@ func TestConnectionString(t *testing.T) {
 				Port:     5432,
 				Database: "testdb",
 				Username: "testuser",
+				SSLMode:  "prefer",
 			},
 			contains: []string{
 				"host=localhost",
 				"port=5432",
 				"dbname=testdb",
 				"user=testuser",
-				"sslmode=disable",
+				"sslmode=prefer",
 			},
 		},
 		{
@@ -285,6 +286,7 @@ func TestConnectionString(t *testing.T) {
 				Database: "mydb",
 				Username: "admin",
 				Password: "secret",
+				SSLMode:  "prefer",
 			},
 			contains: []string{
 				"host=dbhost",
@@ -292,14 +294,14 @@ func TestConnectionString(t *testing.T) {
 				"dbname=mydb",
 				"user=admin",
 				"password=secret",
-				"sslmode=disable",
+				"sslmode=prefer",
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			connStr := tt.config.ConnectionString()
+			connStr := tt.config.ConnectionString(tt.config.Database)
 			for _, expected := range tt.contains {
 				if !strings.Contains(connStr, expected) {
 					t.Errorf("connection string missing %q: %s", expected, connStr)
@@ -745,5 +747,113 @@ func TestSkipFlagValidation(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestSSLModeDefault verifies sslmode defaults to prefer.
+func TestSSLModeDefault(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
+	os.Args = []string{"radar"}
+
+	cfg, err := parseConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.SSLMode != "prefer" {
+		t.Errorf("expected SSLMode=prefer, got %q", cfg.SSLMode)
+	}
+	if !strings.Contains(cfg.ConnectionString(cfg.Database), "sslmode=prefer") {
+		t.Errorf("expected sslmode=prefer in connection string: %s", cfg.ConnectionString(cfg.Database))
+	}
+}
+
+// TestSSLModeValidation verifies invalid sslmode values are rejected.
+func TestSSLModeValidation(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	tests := []struct {
+		name        string
+		sslmode     string
+		expectError bool
+	}{
+		{"prefer is valid", "prefer", false},
+		{"disable is valid", "disable", false},
+		{"require is valid", "require", false},
+		{"invalid value rejected", "bogus", true},
+		{"allow is not supported", "allow", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
+			os.Args = []string{"radar", "--sslmode", tt.sslmode}
+
+			_, err := parseConfig()
+			if tt.expectError && err == nil {
+				t.Errorf("expected error for sslmode=%q, got nil", tt.sslmode)
+			}
+			if !tt.expectError && err != nil {
+				t.Errorf("unexpected error for sslmode=%q: %v", tt.sslmode, err)
+			}
+		})
+	}
+}
+
+// TestSSLModeEnvFallback verifies PGSSLMODE env var is respected.
+func TestSSLModeEnvFallback(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	t.Run("PGSSLMODE fallback", func(t *testing.T) {
+		t.Setenv("PGSSLMODE", "require")
+		flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
+		os.Args = []string{"radar"}
+
+		cfg, err := parseConfig()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.SSLMode != "require" {
+			t.Errorf("expected SSLMode=require, got %q", cfg.SSLMode)
+		}
+	})
+
+	t.Run("flag takes precedence over PGSSLMODE", func(t *testing.T) {
+		t.Setenv("PGSSLMODE", "require")
+		flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
+		os.Args = []string{"radar", "--sslmode", "disable"}
+
+		cfg, err := parseConfig()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.SSLMode != "disable" {
+			t.Errorf("expected SSLMode=disable, got %q", cfg.SSLMode)
+		}
+	})
+}
+
+// TestConnectionStringQuoting verifies values with special characters are quoted.
+func TestConnectionStringQuoting(t *testing.T) {
+	cfg := Config{
+		Host: "localhost", Port: 5432, Database: "testdb",
+		Username: "testuser", Password: "pass word", SSLMode: "prefer",
+	}
+	s := cfg.ConnectionString(cfg.Database)
+	if !strings.Contains(s, "password='pass word'") {
+		t.Errorf("expected quoted password in: %s", s)
+	}
+
+	cfg2 := Config{
+		Host: "localhost", Port: 5432, Database: "db",
+		Username: "user", Password: "it's", SSLMode: "prefer",
+	}
+	s2 := cfg2.ConnectionString(cfg2.Database)
+	if !strings.Contains(s2, `password='it\'s'`) {
+		t.Errorf("expected escaped single quote in: %s", s2)
 	}
 }
