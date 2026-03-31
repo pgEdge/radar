@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     sysstat \
     policycoreutils \
     dmsetup \
+    openssl \
     && rm -rf /var/lib/apt/lists/*
 
 # Set up working directory

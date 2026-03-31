@@ -85,7 +85,8 @@ jobs:
                       apt-get update && \
                       apt-get install -y \
                           postgresql-18 \
-                          postgresql-18-statviz && \
+                          postgresql-18-statviz \
+                          openssl && \
                       apt-get clean && \
                       rm -rf /var/lib/apt/lists/*
 
@@ -245,6 +246,131 @@ jobs:
             - name: Clean up Docker images
               if: always()
               run: docker rmi radar-integration-test || true
+
+    cert-auth-test:
+        name: Certificate Auth Integration Test
+        runs-on: ubuntu-latest
+        needs: lint-and-test
+        steps:
+            - name: Download Linux binary
+              uses: actions/download-artifact@v4
+              with:
+                  name: radar-linux
+
+            - name: Make binary executable
+              run: chmod +x radar
+
+            - name: Create Dockerfile
+              run: |
+                  cat > Dockerfile.certtest <<'EOF'
+                  FROM debian:bookworm-slim
+                  RUN apt-get update && \
+                      apt-get install -y wget gnupg2 lsb-release sudo openssl && \
+                      wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg && \
+                      echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list && \
+                      apt-get update && \
+                      apt-get install -y postgresql-18 && \
+                      apt-get clean && rm -rf /var/lib/apt/lists/*
+                  COPY radar /usr/local/bin/radar
+                  RUN chmod +x /usr/local/bin/radar
+                  COPY test-cert-auth.sh /test-cert-auth.sh
+                  RUN chmod +x /test-cert-auth.sh
+                  CMD ["/test-cert-auth.sh"]
+                  EOF
+
+            - name: Create cert auth test script
+              run: |
+                  cat > test-cert-auth.sh <<'SCRIPT'
+                  #!/bin/bash
+                  set -e
+
+                  echo "=== Certificate Auth Integration Test ==="
+
+                  rm -rf /var/lib/postgresql/18/main
+                  mkdir -p /var/lib/postgresql/18/main
+                  chown -R postgres:postgres /var/lib/postgresql
+                  sudo -u postgres /usr/lib/postgresql/18/bin/initdb -D /var/lib/postgresql/18/main
+                  sudo -u postgres /usr/lib/postgresql/18/bin/pg_ctl -D /var/lib/postgresql/18/main -l /tmp/postgres.log start
+
+                  for i in {1..30}; do
+                      if sudo -u postgres /usr/lib/postgresql/18/bin/pg_isready -q; then break; fi
+                      sleep 1
+                  done
+
+                  sudo -u postgres psql -c "CREATE DATABASE testdb;"
+                  sudo -u postgres psql -d testdb -c "CREATE USER testuser;"
+
+                  PGDATA=/var/lib/postgresql/18/main
+                  CERTDIR=/tmp/certs
+                  mkdir -p "$CERTDIR"
+
+                  # Generate CA
+                  openssl genpkey -algorithm RSA -out "$CERTDIR/ca.key" 2>/dev/null
+                  openssl req -new -x509 -key "$CERTDIR/ca.key" -out "$CERTDIR/ca.crt" -days 1 -subj "/CN=TestCA" 2>/dev/null
+
+                  # Server cert with SAN (Go requires SANs)
+                  openssl genpkey -algorithm RSA -out "$CERTDIR/server.key" 2>/dev/null
+                  openssl req -new -key "$CERTDIR/server.key" -out "$CERTDIR/server.csr" -subj "/CN=localhost" \
+                      -addext "subjectAltName=DNS:localhost" 2>/dev/null
+                  openssl x509 -req -in "$CERTDIR/server.csr" -CA "$CERTDIR/ca.crt" -CAkey "$CERTDIR/ca.key" \
+                      -CAcreateserial -out "$CERTDIR/server.crt" -days 1 -copy_extensions copyall 2>/dev/null
+
+                  # Client cert (CN=testuser must match PG username)
+                  openssl genpkey -algorithm RSA -out "$CERTDIR/client.key" 2>/dev/null
+                  openssl req -new -key "$CERTDIR/client.key" -out "$CERTDIR/client.csr" -subj "/CN=testuser" 2>/dev/null
+                  openssl x509 -req -in "$CERTDIR/client.csr" -CA "$CERTDIR/ca.crt" -CAkey "$CERTDIR/ca.key" \
+                      -CAcreateserial -out "$CERTDIR/client.crt" -days 1 2>/dev/null
+
+                  cp "$CERTDIR/server.crt" "$CERTDIR/server.key" "$CERTDIR/ca.crt" "$PGDATA/"
+                  chown postgres:postgres "$PGDATA/server.crt" "$PGDATA/server.key" "$PGDATA/ca.crt"
+                  chmod 600 "$PGDATA/server.key"
+                  chmod 600 "$CERTDIR/client.key"
+
+                  sudo -u postgres psql -c "ALTER SYSTEM SET ssl = on;"
+                  sudo -u postgres psql -c "ALTER SYSTEM SET ssl_cert_file = 'server.crt';"
+                  sudo -u postgres psql -c "ALTER SYSTEM SET ssl_key_file = 'server.key';"
+                  sudo -u postgres psql -c "ALTER SYSTEM SET ssl_ca_file = 'ca.crt';"
+
+                  cat > "$PGDATA/pg_hba.conf" <<HBA
+                  local   all             all                                     trust
+                  hostssl testdb          testuser        127.0.0.1/32            cert
+                  host    all             all             127.0.0.1/32            trust
+                  host    all             all             ::1/128                 trust
+                  HBA
+
+                  sudo -u postgres /usr/lib/postgresql/18/bin/pg_ctl -D "$PGDATA" restart -l /tmp/postgres.log
+                  sleep 3
+
+                  echo "=== Running radar with certificate auth ==="
+                  radar -h localhost -d testdb -U testuser \
+                      -sslmode verify-full -sslcert "$CERTDIR/client.crt" -sslkey "$CERTDIR/client.key" -sslrootcert "$CERTDIR/ca.crt" -v
+
+                  ZIPFILE=$(ls radar-*.zip 2>/dev/null | head -1)
+                  if [ -z "$ZIPFILE" ]; then
+                      echo "ERROR: No output file"
+                      exit 1
+                  fi
+
+                  apt-get update && apt-get install -y unzip
+                  if ! unzip -l "$ZIPFILE" | grep -q "postgresql/version.tsv"; then
+                      echo "ERROR: Missing PostgreSQL data — cert auth failed"
+                      exit 1
+                  fi
+                  echo "✓ Certificate auth test PASSED"
+
+                  sudo -u postgres /usr/lib/postgresql/18/bin/pg_ctl -D "$PGDATA" stop
+                  SCRIPT
+                  chmod +x test-cert-auth.sh
+
+            - name: Build Docker image
+              run: docker build -f Dockerfile.certtest -t radar-cert-test .
+
+            - name: Run cert auth test
+              run: docker run --rm radar-cert-test
+
+            - name: Clean up
+              if: always()
+              run: docker rmi radar-cert-test || true
 
     macos-test:
         name: macOS Build and Test

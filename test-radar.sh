@@ -139,9 +139,72 @@ fi
 echo -e "${GREEN}✓ Scenario 4 PASSED${NC}"
 rm -f "$ZIP4"
 
+# Scenario 5: Certificate authentication
+echo ""
+echo "========================================"
+echo -e "${YELLOW}Scenario 5: Certificate authentication${NC}"
+echo "========================================"
+
+PGDATA=/var/lib/postgresql/18/main
+CERTDIR=/tmp/certs
+mkdir -p "$CERTDIR"
+
+# CA key and cert
+openssl genpkey -algorithm RSA -out "$CERTDIR/ca.key" 2>/dev/null
+openssl req -new -x509 -key "$CERTDIR/ca.key" -out "$CERTDIR/ca.crt" -days 1 -subj "/CN=TestCA" 2>/dev/null
+
+# Server key and cert (SAN=localhost — Go requires SANs, not just CN)
+openssl genpkey -algorithm RSA -out "$CERTDIR/server.key" 2>/dev/null
+openssl req -new -key "$CERTDIR/server.key" -out "$CERTDIR/server.csr" -subj "/CN=localhost" \
+    -addext "subjectAltName=DNS:localhost" 2>/dev/null
+openssl x509 -req -in "$CERTDIR/server.csr" -CA "$CERTDIR/ca.crt" -CAkey "$CERTDIR/ca.key" \
+    -CAcreateserial -out "$CERTDIR/server.crt" -days 1 -copy_extensions copyall 2>/dev/null
+
+# Client key and cert (CN=testuser — must match PG username)
+openssl genpkey -algorithm RSA -out "$CERTDIR/client.key" 2>/dev/null
+openssl req -new -key "$CERTDIR/client.key" -out "$CERTDIR/client.csr" -subj "/CN=testuser" 2>/dev/null
+openssl x509 -req -in "$CERTDIR/client.csr" -CA "$CERTDIR/ca.crt" -CAkey "$CERTDIR/ca.key" \
+    -CAcreateserial -out "$CERTDIR/client.crt" -days 1 2>/dev/null
+
+# Set permissions
+cp "$CERTDIR/server.crt" "$CERTDIR/server.key" "$CERTDIR/ca.crt" "$PGDATA/"
+chown postgres:postgres "$PGDATA/server.crt" "$PGDATA/server.key" "$PGDATA/ca.crt"
+chmod 600 "$PGDATA/server.key"
+chmod 600 "$CERTDIR/client.key"
+
+# Configure PostgreSQL for SSL + cert auth
+su - postgres -c "cat >> $PGDATA/postgresql.conf << 'SSLCONF'
+ssl = on
+ssl_cert_file = 'server.crt'
+ssl_key_file = 'server.key'
+ssl_ca_file = 'ca.crt'
+SSLCONF"
+
+# Replace pg_hba.conf: cert auth for testuser, trust for postgres (scenarios 1-4 already passed)
+su - postgres -c "cat > $PGDATA/pg_hba.conf << 'HBA'
+local   all             all                                     trust
+hostssl testdb          testuser        127.0.0.1/32            cert
+host    all             all             127.0.0.1/32            trust
+host    all             all             ::1/128                 trust
+HBA"
+
+# Restart PostgreSQL
+su - postgres -c "/usr/lib/postgresql/18/bin/pg_ctl -D $PGDATA restart -l /var/lib/postgresql/18/logfile"
+sleep 3
+
+# Run radar with cert auth
+./radar -h localhost -d testdb -U testuser \
+    -sslmode verify-full -sslcert "$CERTDIR/client.crt" -sslkey "$CERTDIR/client.key" -sslrootcert "$CERTDIR/ca.crt" -vv
+ZIP5=$(ls -t radar-*.zip | head -1)
+if ! validate_zip "$ZIP5" "Scenario 5" "yes"; then
+    exit 1
+fi
+echo -e "${GREEN}✓ Scenario 5 PASSED${NC}"
+rm -f "$ZIP5"
+
 echo ""
 echo "Stopping PostgreSQL..."
 su - postgres -c "/usr/lib/postgresql/18/bin/pg_ctl -D /var/lib/postgresql/18/main stop"
 
 echo ""
-echo -e "${GREEN}All 4 scenarios passed!${NC}"
+echo -e "${GREEN}All 5 scenarios passed!${NC}"
