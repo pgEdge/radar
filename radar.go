@@ -329,51 +329,53 @@ func parseConfig() (*Config, error) {
 		cfg.Database = os.Getenv("PGDATABASE")
 	}
 
-	sslmodeFlagSet := false
-	flag.Visit(func(f *flag.Flag) {
-		if f.Name == "sslmode" {
-			sslmodeFlagSet = true
+	if !cfg.SkipPostgres {
+		sslmodeFlagSet := false
+		flag.Visit(func(f *flag.Flag) {
+			if f.Name == "sslmode" {
+				sslmodeFlagSet = true
+			}
+		})
+		if !sslmodeFlagSet {
+			if v := os.Getenv("PGSSLMODE"); v != "" {
+				cfg.SSLMode = v
+			}
 		}
-	})
-	if !sslmodeFlagSet {
-		if v := os.Getenv("PGSSLMODE"); v != "" {
-			cfg.SSLMode = v
+
+		validSSLModes := map[string]bool{
+			"prefer": true, "disable": true, "require": true,
+			"verify-ca": true, "verify-full": true,
 		}
-	}
+		if !validSSLModes[cfg.SSLMode] {
+			return nil, fmt.Errorf("invalid sslmode %q: must be one of prefer, disable, require, verify-ca, verify-full", cfg.SSLMode)
+		}
 
-	validSSLModes := map[string]bool{
-		"prefer": true, "disable": true, "require": true,
-		"verify-ca": true, "verify-full": true,
-	}
-	if !validSSLModes[cfg.SSLMode] {
-		return nil, fmt.Errorf("invalid sslmode %q: must be one of prefer, disable, require, verify-ca, verify-full", cfg.SSLMode)
-	}
+		if cfg.SSLCert == "" {
+			cfg.SSLCert = os.Getenv("PGSSLCERT")
+		}
+		if cfg.SSLKey == "" {
+			cfg.SSLKey = os.Getenv("PGSSLKEY")
+		}
+		if cfg.SSLRootCert == "" {
+			cfg.SSLRootCert = os.Getenv("PGSSLROOTCERT")
+		}
 
-	if cfg.SSLCert == "" {
-		cfg.SSLCert = os.Getenv("PGSSLCERT")
-	}
-	if cfg.SSLKey == "" {
-		cfg.SSLKey = os.Getenv("PGSSLKEY")
-	}
-	if cfg.SSLRootCert == "" {
-		cfg.SSLRootCert = os.Getenv("PGSSLROOTCERT")
-	}
-
-	// Cert and key must be specified together
-	if (cfg.SSLCert == "") != (cfg.SSLKey == "") {
-		return nil, fmt.Errorf("--sslcert and --sslkey must be specified together")
-	}
-	// verify-ca and verify-full require a root certificate
-	if (cfg.SSLMode == "verify-ca" || cfg.SSLMode == "verify-full") && cfg.SSLRootCert == "" {
-		return nil, fmt.Errorf("--sslrootcert is required for sslmode=%s", cfg.SSLMode)
-	}
-	// Validate cert files exist
-	for _, f := range []struct{ flag, path string }{
-		{"--sslcert", cfg.SSLCert}, {"--sslkey", cfg.SSLKey}, {"--sslrootcert", cfg.SSLRootCert},
-	} {
-		if f.path != "" {
-			if _, err := os.Stat(f.path); err != nil {
-				return nil, fmt.Errorf("%s: %w", f.flag, err)
+		// Cert and key must be specified together
+		if (cfg.SSLCert == "") != (cfg.SSLKey == "") {
+			return nil, fmt.Errorf("--sslcert and --sslkey must be specified together")
+		}
+		// verify-ca and verify-full require a root certificate
+		if (cfg.SSLMode == "verify-ca" || cfg.SSLMode == "verify-full") && cfg.SSLRootCert == "" {
+			return nil, fmt.Errorf("--sslrootcert is required for sslmode=%s", cfg.SSLMode)
+		}
+		// Validate cert files exist
+		for _, f := range []struct{ flag, path string }{
+			{"--sslcert", cfg.SSLCert}, {"--sslkey", cfg.SSLKey}, {"--sslrootcert", cfg.SSLRootCert},
+		} {
+			if f.path != "" {
+				if _, err := os.Stat(f.path); err != nil {
+					return nil, fmt.Errorf("%s: %w", f.flag, err)
+				}
 			}
 		}
 	}
