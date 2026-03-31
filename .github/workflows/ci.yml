@@ -339,7 +339,10 @@ jobs:
                   HBA
 
                   sudo -u postgres /usr/lib/postgresql/18/bin/pg_ctl -D "$PGDATA" restart -l /tmp/postgres.log
-                  sleep 3
+                  for i in $(seq 1 30); do
+                      if sudo -u postgres /usr/lib/postgresql/18/bin/pg_isready -q 2>/dev/null; then break; fi
+                      sleep 1
+                  done
 
                   echo "=== Running radar with certificate auth ==="
                   radar -h localhost -d testdb -U testuser \
@@ -472,7 +475,10 @@ jobs:
                   HBA
 
                   sudo -u postgres /usr/lib/postgresql/18/bin/pg_ctl -D "$PGDATA" restart -l /tmp/postgres.log
-                  sleep 3
+                  for i in $(seq 1 30); do
+                      if sudo -u postgres /usr/lib/postgresql/18/bin/pg_isready -q 2>/dev/null; then break; fi
+                      sleep 1
+                  done
 
                   echo "testpass" | kinit testuser@$KRB_REALM 2>/dev/null
 

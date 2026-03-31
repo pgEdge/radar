@@ -30,7 +30,10 @@ su - postgres -c "/usr/lib/postgresql/18/bin/pg_ctl -D /var/lib/postgresql/18/ma
 
 echo ""
 echo "Waiting for PostgreSQL to start..."
-sleep 3
+for i in $(seq 1 30); do
+    if su - postgres -c "/usr/lib/postgresql/18/bin/pg_isready -q" 2>/dev/null; then break; fi
+    sleep 1
+done
 
 echo ""
 echo "Creating test database and users..."
@@ -190,7 +193,10 @@ HBA"
 
 # Restart PostgreSQL
 su - postgres -c "/usr/lib/postgresql/18/bin/pg_ctl -D $PGDATA restart -l /var/lib/postgresql/18/logfile"
-sleep 3
+for i in $(seq 1 30); do
+    if su - postgres -c "/usr/lib/postgresql/18/bin/pg_isready -q" 2>/dev/null; then break; fi
+    sleep 1
+done
 
 # Run radar with cert auth
 ./radar -h localhost -d testdb -U testuser \
@@ -267,7 +273,10 @@ HBA
 
 # Restart PostgreSQL
 su - postgres -c "/usr/lib/postgresql/18/bin/pg_ctl -D $PGDATA restart -l /var/lib/postgresql/18/logfile"
-sleep 3
+for i in $(seq 1 30); do
+    if su - postgres -c "/usr/lib/postgresql/18/bin/pg_isready -q" 2>/dev/null; then break; fi
+    sleep 1
+done
 
 # Obtain Kerberos ticket
 echo "testpass" | kinit testuser@$KRB_REALM 2>/dev/null
