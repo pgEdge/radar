@@ -133,7 +133,7 @@ Options:
 
 - **Password** — use `-U` and `PGPASSWORD`, or rely on OS user defaults
 - **LDAP** — server-side only; no client changes needed. Supply credentials as normal
-- **Certificate** — use `--sslmode verify-full --sslcert client.crt --sslkey client.key --sslrootcert ca.crt`
+- **Certificate** — use `-sslmode verify-full -sslcert client.crt -sslkey client.key -sslrootcert ca.crt`
 - **GSSAPI/Kerberos** — ensure a valid Kerberos ticket is present (`kinit`); radar will use it automatically
 
 ### Sample Output
