@@ -1,8 +1,6 @@
 module radar
 
-go 1.24.0
-
-toolchain go1.24.4
+go 1.24.13
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
