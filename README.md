@@ -1,5 +1,7 @@
 # radar
 
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/2645bf9703e7474ba14d618707231276)](https://app.codacy.com/gh/pgEdge/radar?utm_source=github.com&utm_medium=referral&utm_content=pgEdge/radar&utm_campaign=Badge_Grade)
+
 > Agentless, zero-dependency diagnostic data collection tool for PostgreSQL and system metrics.
 
 ## What it Does
@@ -125,6 +127,14 @@ Options:
     	skip PostgreSQL data collection
   -skip-system
     	skip system data collection
+  -sslmode string
+    	SSL mode: prefer, disable, require, verify-ca, verify-full (default "prefer")
+  -sslcert string
+    	client SSL certificate file
+  -sslkey string
+    	client SSL private key file
+  -sslrootcert string
+    	SSL root (CA) certificate file
   -v	verbose output (summary)
   -vv
     	very verbose output (detailed)
@@ -136,6 +146,18 @@ Options:
 - `PGPORT` - PostgreSQL port
 - `PGUSER` - PostgreSQL username
 - `PGPASSWORD` - PostgreSQL password
+- `PGDATABASE` - PostgreSQL database name
+- `PGSSLMODE` - SSL mode
+- `PGSSLCERT` - client SSL certificate file
+- `PGSSLKEY` - client SSL private key file
+- `PGSSLROOTCERT` - SSL root (CA) certificate file
+
+### Authentication Methods
+
+- **Password** — use `-U` and `PGPASSWORD`, or rely on OS user defaults
+- **LDAP** — server-side only; no client changes needed. Supply credentials as normal
+- **Certificate** — use `--sslmode verify-full --sslcert client.crt --sslkey client.key --sslrootcert ca.crt`
+- **GSSAPI/Kerberos** — ensure a valid Kerberos ticket is present (`kinit`); radar will use it automatically
 
 ### Sample Output
 
