@@ -317,6 +317,10 @@ func parseConfig() (*Config, error) {
 
 	cfg.Password = os.Getenv("PGPASSWORD")
 
+	if cfg.Database == "" {
+		cfg.Database = os.Getenv("PGDATABASE")
+	}
+
 	// Validate skip flag combinations
 	if cfg.SkipSystem && cfg.SkipPostgres {
 		return nil, fmt.Errorf("cannot use --skip-system and --skip-postgres together (nothing would be collected)")
@@ -325,10 +329,6 @@ func parseConfig() (*Config, error) {
 	// If skipping system data, PostgreSQL connection is mandatory
 	if cfg.SkipSystem && cfg.Database == "" {
 		return nil, fmt.Errorf("--skip-system requires PostgreSQL database (-d flag)")
-	}
-
-	if cfg.Database == "" {
-		cfg.Database = os.Getenv("PGDATABASE")
 	}
 
 	// Default to "postgres" database if not specified and not skipping PostgreSQL
