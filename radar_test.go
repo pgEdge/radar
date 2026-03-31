@@ -416,40 +416,64 @@ func TestCollect(t *testing.T) {
 	}
 }
 
-// Test collect with failures
+// TestCollectWithFailures tests collect error handling
 func TestCollectWithFailures(t *testing.T) {
-	var buf bytes.Buffer
-	zipWriter := zip.NewWriter(&buf)
-	defer closeErrCheck(zipWriter, "zip writer")
+	t.Run("skip error is silent", func(t *testing.T) {
+		var buf bytes.Buffer
+		zipWriter := zip.NewWriter(&buf)
+		defer closeErrCheck(zipWriter, "zip writer")
 
-	cfg := &Config{Verbose: false}
+		var errBuf bytes.Buffer
+		errorLog.SetOutput(&errBuf)
+		defer errorLog.SetOutput(os.Stderr)
 
-	tasks := []CollectionTask{
-		{
-			Category:    "test",
-			Name:        "success",
-			ArchivePath: "test/success.out",
-			Collector: func(cfg *Config, w io.Writer) error {
-				_, err := w.Write([]byte("ok"))
-				return err
-			},
-		},
-		{
-			Category:    "test",
-			Name:        "failure",
-			ArchivePath: "test/fail.out",
-			Collector: func(cfg *Config, w io.Writer) error {
-				return bytes.ErrTooLarge
-			},
-		},
-	}
+		cfg := &Config{Verbose: false}
+		tasks := []CollectionTask{
+			{Category: "test", Name: "skip_task", ArchivePath: "test/skip.out",
+				Collector: func(cfg *Config, w io.Writer) error {
+					return NewSkipError("command not found: fake")
+				}},
+		}
 
-	collected := collect(cfg, zipWriter, tasks)
+		collected := collect(cfg, zipWriter, tasks)
+		if collected != 0 {
+			t.Errorf("expected 0 collected, got %d", collected)
+		}
+		if errBuf.Len() > 0 {
+			t.Errorf("SkipError should not be logged, got: %s", errBuf.String())
+		}
+	})
 
-	if collected != 1 {
-		t.Errorf("expected 1 collected, got %d", collected)
-	}
-	// Note: We no longer track failed count separately - tasks that fail are simply not collected
+	t.Run("real error is logged", func(t *testing.T) {
+		var buf bytes.Buffer
+		zipWriter := zip.NewWriter(&buf)
+		defer closeErrCheck(zipWriter, "zip writer")
+
+		var errBuf bytes.Buffer
+		errorLog.SetOutput(&errBuf)
+		defer errorLog.SetOutput(os.Stderr)
+
+		cfg := &Config{Verbose: false}
+		tasks := []CollectionTask{
+			{Category: "test", Name: "real_error", ArchivePath: "test/fail.out",
+				Collector: func(cfg *Config, w io.Writer) error {
+					return bytes.ErrTooLarge
+				}},
+			{Category: "test", Name: "success", ArchivePath: "test/ok.out",
+				Collector: func(cfg *Config, w io.Writer) error {
+					_, err := w.Write([]byte("ok"))
+					return err
+				}},
+		}
+
+		collected := collect(cfg, zipWriter, tasks)
+		if collected != 1 {
+			t.Errorf("expected 1 collected, got %d", collected)
+		}
+		if !strings.Contains(errBuf.String(), "real_error") {
+			t.Errorf("real error should be logged, got: %s", errBuf.String())
+		}
+	})
 }
 
 // TestNoDuplicateSystemArchivePaths verifies no duplicate archive paths in system tasks
@@ -593,6 +617,68 @@ func TestLazyZipWriterNoWrite(t *testing.T) {
 	if len(reader.File) != 0 {
 		t.Errorf("expected 0 files in zip, got %d", len(reader.File))
 	}
+}
+
+// TestPGEnvFallbacks tests PGPORT and PGDATABASE environment variable fallbacks.
+func TestPGEnvFallbacks(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	t.Run("PGPORT fallback", func(t *testing.T) {
+		t.Setenv("PGPORT", "5433")
+		flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
+		os.Args = []string{"radar", "--skip-system", "-d", "testdb"}
+
+		cfg, err := parseConfig()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.Port != 5433 {
+			t.Errorf("expected port 5433, got %d", cfg.Port)
+		}
+	})
+
+	t.Run("PGPORT flag takes precedence", func(t *testing.T) {
+		t.Setenv("PGPORT", "5433")
+		flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
+		os.Args = []string{"radar", "--skip-system", "-d", "testdb", "-p", "5434"}
+
+		cfg, err := parseConfig()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.Port != 5434 {
+			t.Errorf("expected port 5434, got %d", cfg.Port)
+		}
+	})
+
+	t.Run("PGDATABASE fallback", func(t *testing.T) {
+		t.Setenv("PGDATABASE", "envdb")
+		flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
+		os.Args = []string{"radar"}
+
+		cfg, err := parseConfig()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.Database != "envdb" {
+			t.Errorf("expected database 'envdb', got %q", cfg.Database)
+		}
+	})
+
+	t.Run("PGDATABASE flag takes precedence", func(t *testing.T) {
+		t.Setenv("PGDATABASE", "envdb")
+		flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
+		os.Args = []string{"radar", "-d", "flagdb"}
+
+		cfg, err := parseConfig()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.Database != "flagdb" {
+			t.Errorf("expected database 'flagdb', got %q", cfg.Database)
+		}
+	})
 }
 
 // TestSkipFlagValidation tests validation of skip flag combinations

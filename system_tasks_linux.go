@@ -12,6 +12,41 @@
 
 package main
 
+import (
+	"os"
+	"strings"
+)
+
+// getContainerTasks returns container-specific collection tasks if running inside a container
+func getContainerTasks() []CollectionTask {
+	if !isContainer() {
+		return nil
+	}
+	return buildCommandTasks("system", containerCommandTasks)
+}
+
+// isContainer returns true if radar is running inside a container
+func isContainer() bool {
+	if _, err := os.Stat("/.dockerenv"); err == nil {
+		return true
+	}
+
+	if data, err := os.ReadFile("/proc/1/cgroup"); err == nil {
+		content := strings.ToLower(string(data))
+		for _, sig := range []string{"docker", "kubepods", "containerd", "lxc"} {
+			if strings.Contains(content, sig) {
+				return true
+			}
+		}
+	}
+
+	if os.Getenv("KUBERNETES_SERVICE_HOST") != "" {
+		return true
+	}
+
+	return false
+}
+
 // System command tasks (sorted alphabetically by name)
 var systemCommandTasks = []SimpleCommandTask{
 	{
@@ -313,6 +348,121 @@ var systemCommandTasks = []SimpleCommandTask{
 // System file read tasks (sorted alphabetically by name)
 var systemFileTasks = []SimpleFileTask{
 	{
+		Name:        "cgroup-cpu-max",
+		ArchivePath: "system/cgroup/cpu_max.out",
+		Path:        "/sys/fs/cgroup/cpu.max",
+	},
+	{
+		Name:        "cgroup-cpu-weight",
+		ArchivePath: "system/cgroup/cpu_weight.out",
+		Path:        "/sys/fs/cgroup/cpu.weight",
+	},
+	{
+		Name:        "cgroup-cpuset-cpus",
+		ArchivePath: "system/cgroup/cpuset_cpus_effective.out",
+		Path:        "/sys/fs/cgroup/cpuset.cpus.effective",
+	},
+	{
+		Name:        "cgroup-io-max",
+		ArchivePath: "system/cgroup/io_max.out",
+		Path:        "/sys/fs/cgroup/io.max",
+	},
+	{
+		Name:        "cgroup-memory-current",
+		ArchivePath: "system/cgroup/memory_current.out",
+		Path:        "/sys/fs/cgroup/memory.current",
+	},
+	{
+		Name:        "cgroup-memory-max",
+		ArchivePath: "system/cgroup/memory_max.out",
+		Path:        "/sys/fs/cgroup/memory.max",
+	},
+	{
+		Name:        "cgroup-memory-stat",
+		ArchivePath: "system/cgroup/memory_stat.out",
+		Path:        "/sys/fs/cgroup/memory.stat",
+	},
+	{
+		Name:        "cgroup-memory-swap-max",
+		ArchivePath: "system/cgroup/memory_swap_max.out",
+		Path:        "/sys/fs/cgroup/memory.swap.max",
+	},
+	{
+		Name:        "cgroup-pids-current",
+		ArchivePath: "system/cgroup/pids_current.out",
+		Path:        "/sys/fs/cgroup/pids.current",
+	},
+	{
+		Name:        "cgroup-pids-max",
+		ArchivePath: "system/cgroup/pids_max.out",
+		Path:        "/sys/fs/cgroup/pids.max",
+	},
+	{
+		Name:        "cgroup-v1-cpu-cfs-period",
+		ArchivePath: "system/cgroup-v1/cpu_cfs_period_us.out",
+		Path:        "/sys/fs/cgroup/cpu/cpu.cfs_period_us",
+	},
+	{
+		Name:        "cgroup-v1-cpu-cfs-quota",
+		ArchivePath: "system/cgroup-v1/cpu_cfs_quota_us.out",
+		Path:        "/sys/fs/cgroup/cpu/cpu.cfs_quota_us",
+	},
+	{
+		Name:        "cgroup-v1-cpu-shares",
+		ArchivePath: "system/cgroup-v1/cpu_shares.out",
+		Path:        "/sys/fs/cgroup/cpu/cpu.shares",
+	},
+	{
+		Name:        "cgroup-v1-cpuset-cpus",
+		ArchivePath: "system/cgroup-v1/cpuset_cpus.out",
+		Path:        "/sys/fs/cgroup/cpuset/cpuset.cpus",
+	},
+	{
+		Name:        "cgroup-v1-memory-limit",
+		ArchivePath: "system/cgroup-v1/memory_limit_in_bytes.out",
+		Path:        "/sys/fs/cgroup/memory/memory.limit_in_bytes",
+	},
+	{
+		Name:        "cgroup-v1-memory-stat",
+		ArchivePath: "system/cgroup-v1/memory_stat.out",
+		Path:        "/sys/fs/cgroup/memory/memory.stat",
+	},
+	{
+		Name:        "cgroup-v1-memory-usage",
+		ArchivePath: "system/cgroup-v1/memory_usage_in_bytes.out",
+		Path:        "/sys/fs/cgroup/memory/memory.usage_in_bytes",
+	},
+	{
+		Name:        "cloud-bios-vendor",
+		ArchivePath: "system/cloud/bios_vendor.out",
+		Path:        "/sys/class/dmi/id/bios_vendor",
+	},
+	{
+		Name:        "cloud-chassis-asset-tag",
+		ArchivePath: "system/cloud/chassis_asset_tag.out",
+		Path:        "/sys/class/dmi/id/chassis_asset_tag",
+	},
+	{
+		Name:        "cloud-product-name",
+		ArchivePath: "system/cloud/product_name.out",
+		Path:        "/sys/class/dmi/id/product_name",
+	},
+	{
+		Name:        "cloud-sys-vendor",
+		ArchivePath: "system/cloud/sys_vendor.out",
+		Path:        "/sys/class/dmi/id/sys_vendor",
+	},
+	{
+		Name:        "container-cgroup-membership",
+		ArchivePath: "system/container/cgroup_membership.out",
+		Path:        "/proc/1/cgroup",
+	},
+	{
+		Name:        "container-mountinfo",
+		ArchivePath: "system/container/mountinfo.out",
+		Path:        "/proc/1/mountinfo",
+	},
+	{
 		Name:        "cpuinfo",
 		ArchivePath: "system/proc/cpuinfo.out",
 		Path:        "/proc/cpuinfo",
@@ -396,5 +546,21 @@ var systemFileTasks = []SimpleFileTask{
 		Name:        "system-release",
 		ArchivePath: "system/system_release.out",
 		Path:        "/etc/system-release",
+	},
+}
+
+// Container-only command tasks (only included when isContainer() returns true)
+var containerCommandTasks = []SimpleCommandTask{
+	{
+		Name:        "container-env",
+		ArchivePath: "system/container/environment.out",
+		Command:     "sh",
+		Args:        []string{"-c", "env | grep -E '^(HOSTNAME|CONTAINER_ID|DOCKER_HOST|ECS_CLUSTER|ECS_CONTAINER_METADATA_URI|KUBERNETES_SERVICE_HOST|KUBERNETES_SERVICE_PORT|KUBERNETES_PORT)=' | sort || true"},
+	},
+	{
+		Name:        "container-k8s-namespace",
+		ArchivePath: "system/container/k8s_namespace.out",
+		Command:     "sh",
+		Args:        []string{"-c", "cat /run/secrets/kubernetes.io/serviceaccount/namespace 2>/dev/null || true"},
 	},
 }

@@ -110,6 +110,67 @@ These collectors only run on Linux systems.
 | `system/tuned/tuned-list.out` | `tuned-adm list` | Available tuned profiles |
 | `system/vmstat-command.out` | `vmstat 1 10` | Virtual memory statistics (10 samples) |
 
+### Cgroup v2 Resource Limits (Linux)
+
+Attempted on Linux (skipped if unavailable). Shows actual container resource limits instead of host values.
+
+| File | Source | Description |
+|------|--------|-------------|
+| `system/cgroup/cpu_max.out` | `/sys/fs/cgroup/cpu.max` | CPU bandwidth limit (quota/period) |
+| `system/cgroup/cpu_weight.out` | `/sys/fs/cgroup/cpu.weight` | CPU weight (relative share) |
+| `system/cgroup/cpuset_cpus_effective.out` | `/sys/fs/cgroup/cpuset.cpus.effective` | Effective CPU set |
+| `system/cgroup/io_max.out` | `/sys/fs/cgroup/io.max` | I/O bandwidth limits |
+| `system/cgroup/memory_current.out` | `/sys/fs/cgroup/memory.current` | Current memory usage |
+| `system/cgroup/memory_max.out` | `/sys/fs/cgroup/memory.max` | Memory limit |
+| `system/cgroup/memory_stat.out` | `/sys/fs/cgroup/memory.stat` | Detailed memory statistics |
+| `system/cgroup/memory_swap_max.out` | `/sys/fs/cgroup/memory.swap.max` | Swap limit |
+| `system/cgroup/pids_current.out` | `/sys/fs/cgroup/pids.current` | Current number of PIDs |
+| `system/cgroup/pids_max.out` | `/sys/fs/cgroup/pids.max` | PID limit |
+
+### Cgroup v1 Resource Limits (Linux)
+
+Attempted on Linux (skipped if unavailable). Present on older kernels (pre-cgroup v2 unified hierarchy).
+
+| File | Source | Description |
+|------|--------|-------------|
+| `system/cgroup-v1/cpu_cfs_period_us.out` | `/sys/fs/cgroup/cpu/cpu.cfs_period_us` | CFS scheduling period |
+| `system/cgroup-v1/cpu_cfs_quota_us.out` | `/sys/fs/cgroup/cpu/cpu.cfs_quota_us` | CFS CPU quota (-1 = unlimited) |
+| `system/cgroup-v1/cpu_shares.out` | `/sys/fs/cgroup/cpu/cpu.shares` | CPU shares (relative weight) |
+| `system/cgroup-v1/cpuset_cpus.out` | `/sys/fs/cgroup/cpuset/cpuset.cpus` | Allowed CPUs |
+| `system/cgroup-v1/memory_limit_in_bytes.out` | `/sys/fs/cgroup/memory/memory.limit_in_bytes` | Memory limit |
+| `system/cgroup-v1/memory_stat.out` | `/sys/fs/cgroup/memory/memory.stat` | Detailed memory statistics |
+| `system/cgroup-v1/memory_usage_in_bytes.out` | `/sys/fs/cgroup/memory/memory.usage_in_bytes` | Current memory usage |
+
+### Cloud/Hardware Identity (Linux)
+
+Attempted on Linux (skipped if unavailable). Identifies cloud provider and instance type via DMI data.
+
+| File | Source | Description |
+|------|--------|-------------|
+| `system/cloud/bios_vendor.out` | `/sys/class/dmi/id/bios_vendor` | BIOS vendor (e.g. Amazon EC2, Google) |
+| `system/cloud/chassis_asset_tag.out` | `/sys/class/dmi/id/chassis_asset_tag` | Chassis asset tag (e.g. AWS instance ID) |
+| `system/cloud/product_name.out` | `/sys/class/dmi/id/product_name` | Product name (e.g. instance type) |
+| `system/cloud/sys_vendor.out` | `/sys/class/dmi/id/sys_vendor` | System vendor |
+
+### Container Identity (Linux)
+
+Attempted on Linux (skipped if unavailable). Helps identify container runtime and environment.
+
+| File | Source | Description |
+|------|--------|-------------|
+| `system/container/cgroup_membership.out` | `/proc/1/cgroup` | Cgroup membership (container signatures) |
+| `system/container/mountinfo.out` | `/proc/1/mountinfo` | PID 1 mount info (overlay detection) |
+
+### Container Detection (Linux, auto-detected)
+
+Only collected when running inside a container (Docker, Kubernetes, LXC, containerd).
+
+| File | Source | Description |
+|------|--------|-------------|
+| `system/container/dockerenv.out` | `test -f /.dockerenv` | Docker container detection |
+| `system/container/environment.out` | `env \| grep` | Allowlisted env vars: `HOSTNAME`, `CONTAINER_ID`, `DOCKER_HOST`, `ECS_CLUSTER`, `ECS_CONTAINER_METADATA_URI`, `KUBERNETES_SERVICE_HOST`, `KUBERNETES_SERVICE_PORT`, `KUBERNETES_PORT` |
+| `system/container/k8s_namespace.out` | `/run/secrets/.../namespace` | Kubernetes namespace |
+
 ---
 
 ## macOS-Specific System Collectors

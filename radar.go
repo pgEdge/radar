@@ -13,6 +13,7 @@ package main
 import (
 	"archive/zip"
 	"database/sql"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -20,6 +21,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"strconv"
 	"strings"
 	"time"
 
@@ -87,6 +89,7 @@ type lazyZipWriter struct {
 	writer    io.Writer // nil until first Write()
 }
 
+// Write defers ZIP entry creation until first non-empty write.
 func (w *lazyZipWriter) Write(p []byte) (int, error) {
 	if len(p) == 0 {
 		return 0, nil // Ignore empty writes
@@ -101,6 +104,7 @@ func (w *lazyZipWriter) Write(p []byte) (int, error) {
 	return w.writer.Write(p)
 }
 
+// WroteAny returns true if any data was written.
 func (w *lazyZipWriter) WroteAny() bool {
 	return w.writer != nil
 }
@@ -110,6 +114,7 @@ type SkipError struct {
 	Reason string
 }
 
+// Error returns the skip reason.
 func (e SkipError) Error() string {
 	return e.Reason
 }
@@ -178,6 +183,7 @@ var (
 	errorLog = log.New(os.Stderr, "ERROR: ", 0)
 )
 
+// main is the radar entry point.
 func main() {
 	cfg, err := parseConfig()
 	if err != nil {
@@ -242,15 +248,16 @@ func main() {
 		os.Exit(ExitCollectError)
 	}
 
-	// Print professional summary
-	printSummary(totalCollected, outputFile, cfg)
-
 	if totalCollected == 0 {
 		errorLog.Println("No data collected - this may indicate a problem")
 		os.Exit(ExitNoData)
 	}
+
+	// Print summary
+	printSummary(totalCollected, outputFile, cfg)
 }
 
+// parseConfig parses command-line flags into a Config.
 func parseConfig() (*Config, error) {
 	cfg := &Config{}
 
@@ -283,6 +290,20 @@ func parseConfig() (*Config, error) {
 		}
 	}
 
+	portFlagSet := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "p" {
+			portFlagSet = true
+		}
+	})
+	if !portFlagSet {
+		if pgport := os.Getenv("PGPORT"); pgport != "" {
+			if p, err := strconv.Atoi(pgport); err == nil {
+				cfg.Port = p
+			}
+		}
+	}
+
 	if cfg.Username == "" {
 		cfg.Username = os.Getenv("PGUSER")
 		if cfg.Username == "" {
@@ -295,6 +316,10 @@ func parseConfig() (*Config, error) {
 	}
 
 	cfg.Password = os.Getenv("PGPASSWORD")
+
+	if cfg.Database == "" {
+		cfg.Database = os.Getenv("PGDATABASE")
+	}
 
 	// Validate skip flag combinations
 	if cfg.SkipSystem && cfg.SkipPostgres {
@@ -314,6 +339,7 @@ func parseConfig() (*Config, error) {
 	return cfg, nil
 }
 
+// ConnectionString builds a PostgreSQL connection string.
 func (c *Config) ConnectionString() string {
 	params := []string{
 		fmt.Sprintf("host=%s", c.Host),
@@ -330,6 +356,7 @@ func (c *Config) ConnectionString() string {
 	return strings.Join(params, " ")
 }
 
+// initPostgreSQL opens and verifies the PostgreSQL connection.
 func initPostgreSQL(cfg *Config) error {
 	db, err := sql.Open("postgres", cfg.ConnectionString())
 	if err != nil {
@@ -337,12 +364,15 @@ func initPostgreSQL(cfg *Config) error {
 	}
 
 	if err := db.Ping(); err != nil {
+		closeErrCheck(db, "database connection")
 		return err
 	}
 
 	cfg.DB = db
 	return nil
 }
+
+// collectAll runs all collection tasks and writes results to the ZIP archive.
 func collectAll(cfg *Config, zipWriter *zip.Writer) int {
 	collected := 0
 
@@ -395,9 +425,15 @@ func collect(cfg *Config, zipWriter *zip.Writer, tasks []CollectionTask) int {
 
 		err := task.Collector(cfg, lazy)
 		if err != nil {
-			// Silently skip - don't spam user with errors
-			if cfg.VeryVerbose {
-				infoLog.Printf("⊘ %s (unavailable)", task.Name)
+			var skipErr SkipError
+			if errors.As(err, &skipErr) {
+				// Unavailable (command not found, file missing, no data)
+				if cfg.VeryVerbose {
+					infoLog.Printf("⊘ %s (unavailable)", task.Name)
+				}
+			} else {
+				// Error (I/O, permission, SQL)
+				errorLog.Printf("✗ %s: %v", task.Name, err)
 			}
 			continue
 		}

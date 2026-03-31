@@ -156,6 +156,10 @@ For a complete reference of all collected data, see [docs/data.md](docs/data.md)
 - **Operating system**: `apt`, `dnf`, `dpkg`, `hostname`, `hosts`, `limits.conf`, `locale`, `locale.conf`, `localectl`, `lsmod`, `lspci`, `machine-id`, `os-release`, `ps`, `rpm`, `system-release`, `systemctl`, `systemd-detect-virt`, `timedatectl`, `tuned-adm`, `uname`, `yum`
 - **Network**: `ifconfig`, `ip`, `netstat`, `resolv.conf`, `ss`
 - **Security**: `fips-mode-setup`, `openssl`, `sestatus`, `update-crypto-policies`
+- **Cgroup v2**: `cpu.max`, `cpu.weight`, `cpuset.cpus.effective`, `io.max`, `memory.current`, `memory.max`, `memory.stat`, `memory.swap.max`, `pids.current`, `pids.max`
+- **Cgroup v1**: `cpu.cfs_period_us`, `cpu.cfs_quota_us`, `cpu.shares`, `cpuset.cpus`, `memory.limit_in_bytes`, `memory.stat`, `memory.usage_in_bytes`
+- **Cloud/hardware identity**: `bios_vendor`, `chassis_asset_tag`, `product_name`, `sys_vendor` (DMI)
+- **Container detection** (auto-detected): cgroup membership, mount info, Docker detection, Kubernetes namespace, container environment variables
 
 **PostgreSQL Instance**
 
@@ -219,7 +223,7 @@ radar-hostname-20260115-133700.zip
 
 - **System**: Linux with standard utilities (lsblk, mount, df, ps, etc.)
 - **PostgreSQL**: Version 12+ (some features require 13+, 14+, or 16+)
-- **Go**: 1.23+ (for building from source - see [CONTRIBUTING.md](CONTRIBUTING.md))
+- **Go**: 1.24+ (for building from source - see [CONTRIBUTING.md](CONTRIBUTING.md))
 
 ## Performance
 

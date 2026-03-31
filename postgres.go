@@ -167,6 +167,7 @@ func execPGQueryOnDB(dbname string, cfg *Config, query string, w io.Writer) erro
 	return rowsToTSV(rows, w)
 }
 
+// printSummary logs the archive filename, size, and collector count.
 func printSummary(totalCollected int, outputFile string, cfg *Config) {
 	stat, err := os.Stat(outputFile)
 	if err != nil {
