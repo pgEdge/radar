@@ -1,5 +1,7 @@
 # radar
 
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/2645bf9703e7474ba14d618707231276)](https://app.codacy.com/gh/pgEdge/radar?utm_source=github.com&utm_medium=referral&utm_content=pgEdge/radar&utm_campaign=Badge_Grade)
+
 > Agentless, zero-dependency diagnostic data collection tool for PostgreSQL and system metrics.
 
 ## What it Does
