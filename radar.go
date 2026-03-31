@@ -56,13 +56,16 @@ const (
 // Config holds connection parameters and collection settings
 type Config struct {
 	// PostgreSQL connection
-	Host     string
-	Port     int
-	Database string
-	Username string
-	Password string
-	DataDir  string
-	SSLMode  string
+	Host        string
+	Port        int
+	Database    string
+	Username    string
+	Password    string
+	DataDir     string
+	SSLMode     string
+	SSLCert     string
+	SSLKey      string
+	SSLRootCert string
 
 	// Database connection (injected)
 	DB *sql.DB
@@ -273,6 +276,9 @@ func parseConfig() (*Config, error) {
 	flag.StringVar(&cfg.Username, "U", "", "database user")
 	flag.StringVar(&cfg.DataDir, "data-dir", "", "PostgreSQL data directory")
 	flag.StringVar(&cfg.SSLMode, "sslmode", "prefer", "SSL mode (prefer, disable, require, verify-ca, verify-full)")
+	flag.StringVar(&cfg.SSLCert, "sslcert", "", "client SSL certificate file")
+	flag.StringVar(&cfg.SSLKey, "sslkey", "", "client SSL key file")
+	flag.StringVar(&cfg.SSLRootCert, "sslrootcert", "", "SSL root certificate file")
 	flag.BoolVar(&cfg.SkipSystem, "skip-system", false, "skip system data collection")
 	flag.BoolVar(&cfg.SkipPostgres, "skip-postgres", false, "skip PostgreSQL data collection")
 	flag.BoolVar(&cfg.Verbose, "v", false, "verbose output (summary)")
@@ -343,6 +349,35 @@ func parseConfig() (*Config, error) {
 		return nil, fmt.Errorf("invalid sslmode %q: must be one of prefer, disable, require, verify-ca, verify-full", cfg.SSLMode)
 	}
 
+	if cfg.SSLCert == "" {
+		cfg.SSLCert = os.Getenv("PGSSLCERT")
+	}
+	if cfg.SSLKey == "" {
+		cfg.SSLKey = os.Getenv("PGSSLKEY")
+	}
+	if cfg.SSLRootCert == "" {
+		cfg.SSLRootCert = os.Getenv("PGSSLROOTCERT")
+	}
+
+	// Cert and key must be specified together
+	if (cfg.SSLCert == "") != (cfg.SSLKey == "") {
+		return nil, fmt.Errorf("--sslcert and --sslkey must be specified together")
+	}
+	// verify-ca and verify-full require a root certificate
+	if (cfg.SSLMode == "verify-ca" || cfg.SSLMode == "verify-full") && cfg.SSLRootCert == "" {
+		return nil, fmt.Errorf("--sslrootcert is required for sslmode=%s", cfg.SSLMode)
+	}
+	// Validate cert files exist
+	for _, f := range []struct{ flag, path string }{
+		{"--sslcert", cfg.SSLCert}, {"--sslkey", cfg.SSLKey}, {"--sslrootcert", cfg.SSLRootCert},
+	} {
+		if f.path != "" {
+			if _, err := os.Stat(f.path); err != nil {
+				return nil, fmt.Errorf("%s: %w", f.flag, err)
+			}
+		}
+	}
+
 	// Validate skip flag combinations
 	if cfg.SkipSystem && cfg.SkipPostgres {
 		return nil, fmt.Errorf("cannot use --skip-system and --skip-postgres together (nothing would be collected)")
@@ -383,6 +418,15 @@ func (c *Config) ConnectionString(dbname string) string {
 
 	if c.Password != "" {
 		params = append(params, "password="+q(c.Password))
+	}
+	if c.SSLCert != "" {
+		params = append(params, "sslcert="+q(c.SSLCert))
+	}
+	if c.SSLKey != "" {
+		params = append(params, "sslkey="+q(c.SSLKey))
+	}
+	if c.SSLRootCert != "" {
+		params = append(params, "sslrootcert="+q(c.SSLRootCert))
 	}
 
 	return strings.Join(params, " ")
