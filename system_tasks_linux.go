@@ -552,12 +552,6 @@ var systemFileTasks = []SimpleFileTask{
 // Container-only command tasks (only included when isContainer() returns true)
 var containerCommandTasks = []SimpleCommandTask{
 	{
-		Name:        "container-dockerenv",
-		ArchivePath: "system/container/dockerenv.out",
-		Command:     "sh",
-		Args:        []string{"-c", "test -f /.dockerenv && echo 'Docker container detected' || true"},
-	},
-	{
 		Name:        "container-env",
 		ArchivePath: "system/container/environment.out",
 		Command:     "sh",
