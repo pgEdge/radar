@@ -25,7 +25,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/lib/pq"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 // Date/Time Formats
@@ -358,7 +358,7 @@ func (c *Config) ConnectionString() string {
 
 // initPostgreSQL opens and verifies the PostgreSQL connection.
 func initPostgreSQL(cfg *Config) error {
-	db, err := sql.Open("postgres", cfg.ConnectionString())
+	db, err := sql.Open("pgx", cfg.ConnectionString())
 	if err != nil {
 		return err
 	}

@@ -152,7 +152,7 @@ func execPGQueryOnDB(dbname string, cfg *Config, query string, w io.Writer) erro
 		connStr += fmt.Sprintf(" password=%s", cfg.Password)
 	}
 
-	db, err := sql.Open("postgres", connStr)
+	db, err := sql.Open("pgx", connStr)
 	if err != nil {
 		return fmt.Errorf("connecting to %s: %w", dbname, err)
 	}
