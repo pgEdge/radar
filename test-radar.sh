@@ -202,9 +202,88 @@ fi
 echo -e "${GREEN}✓ Scenario 5 PASSED${NC}"
 rm -f "$ZIP5"
 
+# Scenario 6: GSSAPI/Kerberos authentication
+echo ""
+echo "========================================"
+echo -e "${YELLOW}Scenario 6: GSSAPI/Kerberos authentication${NC}"
+echo "========================================"
+
+PGDATA=/var/lib/postgresql/18/main
+KRB_REALM="RADAR.TEST"
+
+# Initialize Kerberos KDC
+mkdir -p /etc/krb5kdc
+cat > /etc/krb5.conf << KRBCONF
+[libdefaults]
+    default_realm = $KRB_REALM
+    dns_lookup_realm = false
+    dns_lookup_kdc = false
+
+[realms]
+    $KRB_REALM = {
+        kdc = localhost
+        admin_server = localhost
+    }
+KRBCONF
+
+cat > /etc/krb5kdc/kdc.conf << KDCCONF
+[kdcdefaults]
+    kdc_ports = 88
+
+[realms]
+    $KRB_REALM = {
+        database_name = /var/lib/krb5kdc/principal
+        key_stash_file = /etc/krb5kdc/stash
+        max_life = 1h
+    }
+KDCCONF
+
+# Create KDC database
+kdb5_util create -s -r "$KRB_REALM" -P masterpass 2>/dev/null
+
+# Create principals
+kadmin.local -q "addprinc -pw testpass testuser@$KRB_REALM" 2>/dev/null
+kadmin.local -q "addprinc -randkey postgres/localhost@$KRB_REALM" 2>/dev/null
+
+# Export keytab for PostgreSQL
+kadmin.local -q "ktadd -k $PGDATA/server.keytab postgres/localhost@$KRB_REALM" 2>/dev/null
+chown postgres:postgres "$PGDATA/server.keytab"
+chmod 600 "$PGDATA/server.keytab"
+
+# Start KDC
+krb5kdc
+
+# Configure PostgreSQL for GSSAPI
+su - postgres -c "/usr/lib/postgresql/18/bin/psql -c \"ALTER SYSTEM SET krb_server_keyfile = '$PGDATA/server.keytab';\""
+
+# Add GSSAPI auth and ident map
+cat > "$PGDATA/pg_hba.conf" << HBA
+local   all             all                                     trust
+hostgssenc testdb       testuser        127.0.0.1/32            gss include_realm=0
+hostssl testdb          testuser        127.0.0.1/32            cert
+host    all             all             127.0.0.1/32            trust
+host    all             all             ::1/128                 trust
+HBA
+
+# Restart PostgreSQL
+su - postgres -c "/usr/lib/postgresql/18/bin/pg_ctl -D $PGDATA restart -l /var/lib/postgresql/18/logfile"
+sleep 3
+
+# Obtain Kerberos ticket
+echo "testpass" | kinit testuser@$KRB_REALM 2>/dev/null
+
+# Run radar with GSSAPI
+./radar -h localhost -d testdb -U testuser -sslmode disable -vv
+ZIP6=$(ls -t radar-*.zip | head -1)
+if ! validate_zip "$ZIP6" "Scenario 6" "yes"; then
+    exit 1
+fi
+echo -e "${GREEN}✓ Scenario 6 PASSED${NC}"
+rm -f "$ZIP6"
+
 echo ""
 echo "Stopping PostgreSQL..."
 su - postgres -c "/usr/lib/postgresql/18/bin/pg_ctl -D /var/lib/postgresql/18/main stop"
 
 echo ""
-echo -e "${GREEN}All 5 scenarios passed!${NC}"
+echo -e "${GREEN}All 6 scenarios passed!${NC}"
