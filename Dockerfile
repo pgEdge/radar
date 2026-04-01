@@ -22,6 +22,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     sysstat \
     policycoreutils \
     dmsetup \
+    openssl \
+    krb5-kdc \
+    krb5-admin-server \
+    krb5-user \
     && rm -rf /var/lib/apt/lists/*
 
 # Set up working directory

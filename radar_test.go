@@ -268,13 +268,14 @@ func TestConnectionString(t *testing.T) {
 				Port:     5432,
 				Database: "testdb",
 				Username: "testuser",
+				SSLMode:  "prefer",
 			},
 			contains: []string{
 				"host=localhost",
 				"port=5432",
 				"dbname=testdb",
 				"user=testuser",
-				"sslmode=disable",
+				"sslmode=prefer",
 			},
 		},
 		{
@@ -285,6 +286,7 @@ func TestConnectionString(t *testing.T) {
 				Database: "mydb",
 				Username: "admin",
 				Password: "secret",
+				SSLMode:  "prefer",
 			},
 			contains: []string{
 				"host=dbhost",
@@ -292,14 +294,14 @@ func TestConnectionString(t *testing.T) {
 				"dbname=mydb",
 				"user=admin",
 				"password=secret",
-				"sslmode=disable",
+				"sslmode=prefer",
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			connStr := tt.config.ConnectionString()
+			connStr := tt.config.ConnectionString(tt.config.Database)
 			for _, expected := range tt.contains {
 				if !strings.Contains(connStr, expected) {
 					t.Errorf("connection string missing %q: %s", expected, connStr)
@@ -745,5 +747,234 @@ func TestSkipFlagValidation(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestSSLModeDefault verifies sslmode defaults to prefer.
+func TestSSLModeDefault(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
+	os.Args = []string{"radar"}
+
+	cfg, err := parseConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.SSLMode != "prefer" {
+		t.Errorf("expected SSLMode=prefer, got %q", cfg.SSLMode)
+	}
+	if !strings.Contains(cfg.ConnectionString(cfg.Database), "sslmode=prefer") {
+		t.Errorf("expected sslmode=prefer in connection string: %s", cfg.ConnectionString(cfg.Database))
+	}
+}
+
+// TestSSLModeValidation verifies invalid sslmode values are rejected.
+func TestSSLModeValidation(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	tests := []struct {
+		name        string
+		sslmode     string
+		expectError bool
+	}{
+		{"prefer is valid", "prefer", false},
+		{"disable is valid", "disable", false},
+		{"require is valid", "require", false},
+		{"invalid value rejected", "bogus", true},
+		{"allow is not supported", "allow", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
+			os.Args = []string{"radar", "--sslmode", tt.sslmode}
+
+			_, err := parseConfig()
+			if tt.expectError && err == nil {
+				t.Errorf("expected error for sslmode=%q, got nil", tt.sslmode)
+			}
+			if !tt.expectError && err != nil {
+				t.Errorf("unexpected error for sslmode=%q: %v", tt.sslmode, err)
+			}
+		})
+	}
+}
+
+// TestSSLModeEnvFallback verifies PGSSLMODE env var is respected.
+func TestSSLModeEnvFallback(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	t.Run("PGSSLMODE fallback", func(t *testing.T) {
+		t.Setenv("PGSSLMODE", "require")
+		flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
+		os.Args = []string{"radar"}
+
+		cfg, err := parseConfig()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.SSLMode != "require" {
+			t.Errorf("expected SSLMode=require, got %q", cfg.SSLMode)
+		}
+	})
+
+	t.Run("flag takes precedence over PGSSLMODE", func(t *testing.T) {
+		t.Setenv("PGSSLMODE", "require")
+		flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
+		os.Args = []string{"radar", "--sslmode", "disable"}
+
+		cfg, err := parseConfig()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.SSLMode != "disable" {
+			t.Errorf("expected SSLMode=disable, got %q", cfg.SSLMode)
+		}
+	})
+}
+
+// TestSSLCertValidation verifies cert/key pairing and rootcert requirements.
+func TestSSLCertValidation(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	certFile, err := os.CreateTemp("", "cert*.pem")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { closeErrCheck(certFile, "certFile"); os.Remove(certFile.Name()) }) //nolint:errcheck
+
+	keyFile, err := os.CreateTemp("", "key*.pem")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { closeErrCheck(keyFile, "keyFile"); os.Remove(keyFile.Name()) }) //nolint:errcheck
+
+	rootCertFile, err := os.CreateTemp("", "rootcert*.pem")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { closeErrCheck(rootCertFile, "rootCertFile"); os.Remove(rootCertFile.Name()) }) //nolint:errcheck
+
+	tests := []struct {
+		name        string
+		args        []string
+		expectError bool
+	}{
+		{"sslcert without sslkey rejected", []string{"radar", "--sslcert", certFile.Name()}, true},
+		{"sslkey without sslcert rejected", []string{"radar", "--sslkey", keyFile.Name()}, true},
+		{"verify-ca without sslrootcert rejected", []string{"radar", "--sslmode", "verify-ca"}, true},
+		{"verify-full without sslrootcert rejected", []string{"radar", "--sslmode", "verify-full"}, true},
+		{"sslcert with sslkey valid", []string{"radar", "--sslcert", certFile.Name(), "--sslkey", keyFile.Name()}, false},
+		{"verify-ca with sslrootcert valid", []string{"radar", "--sslmode", "verify-ca", "--sslrootcert", rootCertFile.Name()}, false},
+		{"nonexistent sslcert rejected", []string{"radar", "--sslcert", "/nonexistent/cert.pem", "--sslkey", keyFile.Name()}, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
+			os.Args = tt.args
+			_, err := parseConfig()
+			if tt.expectError && err == nil {
+				t.Errorf("expected error, got nil")
+			}
+			if !tt.expectError && err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+// TestSSLCertEnvFallbacks verifies PGSSLCERT/PGSSLKEY/PGSSLROOTCERT env vars.
+func TestSSLCertEnvFallbacks(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	certFile, err := os.CreateTemp("", "cert*.pem")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { closeErrCheck(certFile, "certFile"); os.Remove(certFile.Name()) }) //nolint:errcheck
+
+	keyFile, err := os.CreateTemp("", "key*.pem")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { closeErrCheck(keyFile, "keyFile"); os.Remove(keyFile.Name()) }) //nolint:errcheck
+
+	t.Run("PGSSLCERT and PGSSLKEY env vars", func(t *testing.T) {
+		t.Setenv("PGSSLCERT", certFile.Name())
+		t.Setenv("PGSSLKEY", keyFile.Name())
+		flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
+		os.Args = []string{"radar"}
+
+		cfg, err := parseConfig()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.SSLCert != certFile.Name() {
+			t.Errorf("expected SSLCert=%q, got %q", certFile.Name(), cfg.SSLCert)
+		}
+		if cfg.SSLKey != keyFile.Name() {
+			t.Errorf("expected SSLKey=%q, got %q", keyFile.Name(), cfg.SSLKey)
+		}
+	})
+}
+
+// TestConnectionStringWithCerts verifies cert params appear in connection string.
+func TestConnectionStringWithCerts(t *testing.T) {
+	cfg := Config{
+		Host:        "localhost",
+		Port:        5432,
+		Database:    "testdb",
+		Username:    "testuser",
+		SSLMode:     "verify-full",
+		SSLCert:     "/path/to/cert.pem",
+		SSLKey:      "/path/to/key.pem",
+		SSLRootCert: "/path/to/root.pem",
+	}
+
+	s := cfg.ConnectionString(cfg.Database)
+	for _, want := range []string{
+		"sslmode=verify-full",
+		"sslcert=/path/to/cert.pem",
+		"sslkey=/path/to/key.pem",
+		"sslrootcert=/path/to/root.pem",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("expected %q in connection string: %s", want, s)
+		}
+	}
+}
+
+// TestConnectionStringQuoting verifies values with special characters are quoted.
+func TestConnectionStringQuoting(t *testing.T) {
+	cfg := Config{
+		Host: "localhost", Port: 5432, Database: "testdb",
+		Username: "testuser", Password: "pass word", SSLMode: "prefer",
+		SSLCert: "/path/with spaces/cert.pem", SSLKey: "/path/with spaces/key.pem",
+	}
+	s := cfg.ConnectionString(cfg.Database)
+	for _, want := range []string{
+		"password='pass word'",
+		"sslcert='/path/with spaces/cert.pem'",
+		"sslkey='/path/with spaces/key.pem'",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("expected %q in connection string: %s", want, s)
+		}
+	}
+
+	cfg2 := Config{
+		Host: "localhost", Port: 5432, Database: "db",
+		Username: "user", Password: "it's", SSLMode: "prefer",
+	}
+	s2 := cfg2.ConnectionString(cfg2.Database)
+	if !strings.Contains(s2, `password='it\'s'`) {
+		t.Errorf("expected escaped single quote in: %s", s2)
 	}
 }
