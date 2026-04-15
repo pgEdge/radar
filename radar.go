@@ -614,6 +614,9 @@ func pgQueryCollector(db *sql.DB, query string) func(*Config, io.Writer) error {
 		}
 		rows, err := db.Query(query)
 		if err != nil {
+			if isPGUnavailableError(err) {
+				return NewSkipError(err.Error())
+			}
 			return err
 		}
 		defer closeErrCheck(rows, "query rows")

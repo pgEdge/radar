@@ -12,11 +12,32 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+// isPGUnavailableError reports whether err indicates that the queried object
+// is not installed/available (missing extension, table, function, or schema).
+// These are treated as skips rather than failures.
+func isPGUnavailableError(err error) bool {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return false
+	}
+	switch pgErr.Code {
+	case "42P01", // undefined_table
+		"42704", // undefined_object
+		"42883", // undefined_function
+		"3F000": // invalid_schema_name
+		return true
+	}
+	return false
+}
 
 // postgresConfigFileTasks defines tasks for collecting PostgreSQL configuration files (sorted alphabetically by name)
 var postgresConfigFileTasks = []SimpleConfigFileTask{
@@ -154,6 +175,9 @@ func execPGQueryOnDB(dbname string, cfg *Config, query string, w io.Writer) erro
 
 	rows, err := db.Query(query)
 	if err != nil {
+		if isPGUnavailableError(err) {
+			return NewSkipError(err.Error())
+		}
 		return fmt.Errorf("query failed: %w", err)
 	}
 	defer closeErrCheck(rows, "query rows")
