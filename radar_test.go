@@ -520,6 +520,73 @@ func TestPerDatabaseTasksStructure(t *testing.T) {
 	}
 }
 
+// TestQueryTaskColumnsCoverage asserts that the queries we expanded continue
+// to reference the column tokens we rely on. Catches accidental column
+// removal during future edits to these query strings.
+func TestQueryTaskColumnsCoverage(t *testing.T) {
+	checks := []struct {
+		taskList    string
+		taskName    string
+		mustContain []string
+	}{
+		{"postgres", "databases", []string{
+			"datfrozenxid", "datminmxid", "datconnlimit",
+			"datistemplate", "datallowconn",
+		}},
+		{"perDB", "tables", []string{
+			"n_live_tup", "n_dead_tup", "last_autovacuum", "last_analyze",
+			"reltuples", "reloptions", "reltoastrelid", "relpersistence",
+		}},
+		{"perDB", "indexes", []string{
+			"indrelid", "indclass", "indkey", "indisvalid",
+			"idx_scan", "pg_relation_size",
+		}},
+		{"perDB", "sequences", []string{
+			"pg_sequences", "last_value", "max_value", "min_value", "increment_by",
+		}},
+		{"postgres", "stat_ssl", []string{
+			"pg_stat_ssl", "ssl", "cipher",
+		}},
+		{"postgres", "stat_replication_slots", []string{
+			"pg_stat_replication_slots",
+		}},
+		{"perDB", "bloat", []string{
+			"table_bloat_ratio", "wastedbytes",
+		}},
+		{"perDB", "pgstattuple", []string{
+			"pgstattuple_approx",
+		}},
+	}
+
+	taskByName := func(list []SimpleQueryTask, name string) *SimpleQueryTask {
+		for i := range list {
+			if list[i].Name == name {
+				return &list[i]
+			}
+		}
+		return nil
+	}
+
+	for _, c := range checks {
+		var task *SimpleQueryTask
+		switch c.taskList {
+		case "postgres":
+			task = taskByName(postgresQueryTasks, c.taskName)
+		case "perDB":
+			task = taskByName(perDatabaseQueryTasks, c.taskName)
+		}
+		if task == nil {
+			t.Errorf("task %q not found in %s tasks", c.taskName, c.taskList)
+			continue
+		}
+		for _, want := range c.mustContain {
+			if !strings.Contains(task.Query, want) {
+				t.Errorf("task %q query missing expected token %q", c.taskName, want)
+			}
+		}
+	}
+}
+
 // TestPgStatvizTasksStructure verifies all pg_statviz tasks have required fields
 func TestPgStatvizTasksStructure(t *testing.T) {
 	for i, task := range pgStatvizQueryTasks {
