@@ -391,6 +391,16 @@ var perDatabaseQueryTasks = []SimpleQueryTask{
 		Query:       "SELECT * FROM pg_namespace ORDER BY nspname",
 	},
 	{
+		Name:        "sequences",
+		ArchivePath: "databases/%s/sequences.tsv",
+		Query: `SELECT schemaname, sequencename,
+       data_type::regtype::text AS data_type,
+       last_value, max_value, min_value, increment_by,
+       cycle, cache_size
+FROM pg_sequences
+ORDER BY schemaname, sequencename`,
+	},
+	{
 		Name:        "stat_database",
 		ArchivePath: "databases/%s/stat_database.tsv",
 		Query: `SELECT datname,

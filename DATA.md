@@ -292,6 +292,7 @@ Collected for each accessible database. Files stored in `databases/{dbname}/`.
 | `publication_tables.tsv` | `pg_publication_tables` | Tables in publications |
 | `publications.tsv` | `pg_publication` | Logical replication publications |
 | `schemas.tsv` | `pg_namespace` | Schemas |
+| `sequences.tsv` | `pg_sequences` | Sequences with last/min/max values (PG10+) |
 | `stat_database.tsv` | `pg_stat_database` | Per-database statistics |
 | `statistics.tsv` | `pg_statistic_ext` | Extended statistics (PG10+) |
 | `subscription_tables.tsv` | `pg_subscription_rel` | Subscription relation states |
