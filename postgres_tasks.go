@@ -238,6 +238,16 @@ WHERE state != 'idle'`,
 		Query:       "SELECT * FROM pg_stat_slru ORDER BY name",
 	},
 	{
+		Name:        "stat_ssl",
+		ArchivePath: "postgresql/stat_ssl.tsv",
+		Query: `SELECT s.pid, s.ssl, s.version, s.cipher, s.bits,
+       s.client_dn, s.client_serial, s.issuer_dn,
+       a.usename, a.application_name, a.client_addr
+FROM pg_stat_ssl s
+LEFT JOIN pg_stat_activity a ON a.pid = s.pid
+ORDER BY s.pid`,
+	},
+	{
 		Name:        "stat_statements_calls",
 		ArchivePath: "postgresql/stat_statements_calls.tsv",
 		Query:       "SELECT userid, dbid, query, calls, total_exec_time, mean_exec_time, max_exec_time, rows FROM pg_stat_statements ORDER BY calls DESC LIMIT 100",

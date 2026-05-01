@@ -70,6 +70,7 @@ func TestPostgreSQLCollectors(t *testing.T) {
 		{"stat_progress_create_index", "postgresql/stat_progress_create_index.tsv"},
 		{"stat_progress_vacuum", "postgresql/stat_progress_vacuum.tsv"},
 		{"stat_slru", "postgresql/stat_slru.tsv"},
+		{"stat_ssl", "postgresql/stat_ssl.tsv"},
 		{"stat_statements_calls", "postgresql/stat_statements_calls.tsv"},
 		{"stat_statements_max_time", "postgresql/stat_statements_max_time.tsv"},
 		{"stat_statements_total_time", "postgresql/stat_statements_total_time.tsv"},
