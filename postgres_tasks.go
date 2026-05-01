@@ -394,8 +394,34 @@ WHERE datname = current_database()`,
 		Name:        "tables",
 		ArchivePath: "databases/%s/tables.tsv",
 		Query: `
-			SELECT schemaname, tablename, tableowner, tablespace, hasindexes, hasrules, hastriggers
-			FROM pg_tables
+			SELECT n.nspname AS schemaname,
+			       c.relname AS tablename,
+			       pg_get_userbyid(c.relowner) AS tableowner,
+			       t.spcname AS tablespace,
+			       c.relhasindex AS hasindexes,
+			       c.relhasrules AS hasrules,
+			       c.relhastriggers AS hastriggers,
+			       c.relpersistence,
+			       c.reltuples,
+			       c.reloptions,
+			       c.reltoastrelid::regclass AS toast_table,
+			       CASE WHEN c.reltoastrelid <> 0
+			            THEN pg_relation_size(c.reltoastrelid) END AS toast_size,
+			       s.n_live_tup,
+			       s.n_dead_tup,
+			       s.n_mod_since_analyze,
+			       s.n_ins_since_vacuum,
+			       s.last_vacuum,
+			       s.last_autovacuum,
+			       s.last_analyze,
+			       s.last_autoanalyze
+			FROM pg_class c
+			JOIN pg_namespace n ON n.oid = c.relnamespace
+			LEFT JOIN pg_tablespace t ON t.oid = c.reltablespace
+			LEFT JOIN pg_stat_all_tables s ON s.relid = c.oid
+			WHERE c.relkind IN ('r', 'p')
+			  AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+			  AND n.nspname NOT LIKE 'pg_toast%'
 			ORDER BY schemaname, tablename
 		`,
 	},

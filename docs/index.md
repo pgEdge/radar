@@ -171,7 +171,7 @@ For a complete reference of all collected data, see [data.md](data.md).
 
 **Per-Database**
 
-- **Schema objects**: `pg_indexes`, `pg_namespace`, `pg_operator`, `pg_tables`, `pg_type`
+- **Schema objects**: `pg_class` + `pg_stat_all_tables` (tables incl. dead-tup counters, vacuum/analyze timestamps, `reloptions`, `reltoastrelid`, `relpersistence`), `pg_indexes`, `pg_namespace`, `pg_operator`, `pg_type`
 - **Functions & procedures**: `pg_proc`
 - **Triggers & partitioning**: `pg_inherits`, `pg_partitioned_table`, `pg_trigger`
 - **Logical replication**: `pg_publication`, `pg_publication_tables`, `pg_subscription_rel`
