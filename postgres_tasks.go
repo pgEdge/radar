@@ -319,6 +319,71 @@ ORDER BY s.pid`,
 // These are per-database tasks - ArchivePath will be formatted with dbname
 var perDatabaseQueryTasks = []SimpleQueryTask{
 	{
+		Name:        "bloat",
+		ArchivePath: "databases/%s/bloat.tsv",
+		Query: `
+SELECT current_database() AS current_database,
+       schemaname,
+       tablename,
+       ROUND((CASE WHEN otta = 0 THEN 0.0
+                   ELSE sml.relpages::FLOAT / otta END)::NUMERIC, 1)
+         AS table_bloat_ratio,
+       CASE WHEN relpages < otta THEN 0
+            ELSE bs * (sml.relpages - otta)::BIGINT END AS wastedbytes,
+       iname,
+       ituples,
+       ipages,
+       iotta
+FROM (
+  SELECT schemaname, tablename, cc.reltuples, cc.relpages, bs,
+         CEIL((cc.reltuples *
+               ((datahdr + ma -
+                 (CASE WHEN datahdr % ma = 0 THEN ma
+                       ELSE datahdr % ma END)) + nullhdr2 + 4))
+              / (bs - 20::FLOAT)) AS otta,
+         COALESCE(c2.relname, '?') AS iname,
+         COALESCE(c2.reltuples, 0) AS ituples,
+         COALESCE(c2.relpages, 0) AS ipages,
+         COALESCE(CEIL((c2.reltuples * (datahdr - 12))
+                       / (bs - 20::FLOAT)), 0) AS iotta
+  FROM (
+    SELECT ma, bs, schemaname, tablename,
+           (datawidth +
+            (hdr + ma -
+             (CASE WHEN hdr % ma = 0 THEN ma
+                   ELSE hdr % ma END)))::NUMERIC AS datahdr,
+           (maxfracsum *
+            (nullhdr + ma -
+             (CASE WHEN nullhdr % ma = 0 THEN ma
+                   ELSE nullhdr % ma END))) AS nullhdr2
+    FROM (
+      SELECT schemaname, tablename, hdr, ma, bs,
+             SUM((1 - null_frac) * avg_width) AS datawidth,
+             MAX(null_frac) AS maxfracsum,
+             hdr + (SELECT 1 + COUNT(*) / 8
+                    FROM pg_stats s2
+                    WHERE null_frac <> 0
+                      AND s2.schemaname = s.schemaname
+                      AND s2.tablename = s.tablename) AS nullhdr
+      FROM pg_stats s,
+           (SELECT (SELECT current_setting('block_size')::NUMERIC)
+                       AS bs,
+                   CASE WHEN SUBSTRING(v, 12, 3)
+                              IN ('8.0', '8.1', '8.2') THEN 27
+                        ELSE 23 END AS hdr,
+                   CASE WHEN v ~ 'mingw32' THEN 8
+                        ELSE 4 END AS ma
+            FROM (SELECT version() AS v) AS foo) AS constants
+      GROUP BY 1, 2, 3, 4, 5) AS foo) AS rs
+  JOIN pg_class cc ON cc.relname = rs.tablename
+  JOIN pg_namespace nn ON cc.relnamespace = nn.oid
+                      AND nn.nspname = rs.schemaname
+  LEFT JOIN pg_index i ON indrelid = cc.oid
+  LEFT JOIN pg_class c2 ON c2.oid = i.indexrelid) AS sml
+ORDER BY wastedbytes DESC, schemaname, tablename
+		`,
+	},
+	{
 		Name:        "extensions",
 		ArchivePath: "databases/%s/extensions.tsv",
 		Query:       "SELECT * FROM pg_extension ORDER BY extname",
@@ -384,6 +449,28 @@ var perDatabaseQueryTasks = []SimpleQueryTask{
 			FROM pg_inherits
 			ORDER BY inhparent, inhseqno
 		`,
+	},
+	{
+		Name:        "pgstattuple",
+		ArchivePath: "databases/%s/pgstattuple.tsv",
+		Query: `SELECT n.nspname AS schemaname,
+       c.relname AS tablename,
+       p.table_len,
+       p.approx_tuple_count AS tuple_count,
+       p.approx_tuple_len AS tuple_len,
+       p.approx_tuple_percent AS tuple_percent,
+       p.dead_tuple_count,
+       p.dead_tuple_len,
+       p.dead_tuple_percent,
+       p.approx_free_space AS free_space,
+       p.approx_free_percent AS free_percent
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+CROSS JOIN LATERAL pgstattuple_approx(c.oid) p
+WHERE c.relkind IN ('r', 'm')
+  AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+  AND n.nspname NOT LIKE 'pg_toast%'
+ORDER BY p.dead_tuple_percent DESC NULLS LAST`,
 	},
 	{
 		Name:        "procs",

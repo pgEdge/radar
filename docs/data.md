@@ -283,6 +283,7 @@ Collected for each accessible database. Files stored in `databases/{dbname}/`.
 
 | File | Source | Description |
 |------|--------|-------------|
+| `bloat.tsv` | `pg_stats` heuristic | Table bloat estimate (heuristic) |
 | `extensions.tsv` | `pg_extension` | Installed extensions |
 | `funcs.tsv` | `pg_proc WHERE prokind='f'` | Functions |
 | `indexes.tsv` | `pg_index` + `pg_stat_all_indexes` | Indexes with semantic key, validity, scan counters and size |
@@ -290,6 +291,7 @@ Collected for each accessible database. Files stored in `databases/{dbname}/`.
 | `operators.tsv` | `pg_operator` | Operators |
 | `partitioned_tables.tsv` | `pg_partitioned_table` | Partitioned tables (PG10+) |
 | `partitions.tsv` | `pg_inherits` | Partition relationships |
+| `pgstattuple.tsv` | `pgstattuple_approx()` | Authoritative bloat (when `pgstattuple` extension is installed) |
 | `procs.tsv` | `pg_proc WHERE prokind='p'` | Procedures (PG11+) |
 | `publication_tables.tsv` | `pg_publication_tables` | Tables in publications |
 | `publications.tsv` | `pg_publication` | Logical replication publications |

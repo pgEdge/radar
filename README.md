@@ -198,8 +198,9 @@ For a complete reference of all collected data, see [docs/data.md](docs/data.md)
 - **Functions & procedures**: `pg_proc`
 - **Triggers & partitioning**: `pg_inherits`, `pg_partitioned_table`, `pg_trigger`
 - **Logical replication**: `pg_publication`, `pg_publication_tables`, `pg_subscription_rel`
-- **Extensions**: `pg_extension`, `pg_language`, `pg_statistic_ext`
+- **Extensions**: `pg_extension`, `pg_language`, `pg_statistic_ext`, `pgstattuple` (if installed — authoritative bloat estimate via `pgstattuple_approx()`)
 - **Statistics**: `pg_stat_database` (conflicts, deadlocks, temp files, stats reset)
+- **Bloat estimate**: heuristic from `pg_stats` (always emitted)
 
 **[pg_statviz](https://github.com/vyruss/pg_statviz) Extension** (if present)
 
