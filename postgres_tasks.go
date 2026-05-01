@@ -317,8 +317,30 @@ var perDatabaseQueryTasks = []SimpleQueryTask{
 		Name:        "indexes",
 		ArchivePath: "databases/%s/indexes.tsv",
 		Query: `
-			SELECT schemaname, tablename, indexname, indexdef
-			FROM pg_indexes
+			SELECT n.nspname AS schemaname,
+			       t.relname AS tablename,
+			       c.relname AS indexname,
+			       pg_get_indexdef(i.indexrelid) AS indexdef,
+			       i.indrelid::regclass AS indrelid,
+			       i.indexrelid::regclass AS indexrelid,
+			       i.indisunique,
+			       i.indisprimary,
+			       i.indisvalid,
+			       i.indclass::text AS indclass,
+			       i.indkey::text AS indkey,
+			       pg_get_expr(i.indexprs, i.indrelid) AS indexprs,
+			       pg_get_expr(i.indpred, i.indrelid) AS indpred,
+			       pg_relation_size(i.indexrelid) AS index_size,
+			       s.idx_scan,
+			       s.idx_tup_read,
+			       s.idx_tup_fetch
+			FROM pg_index i
+			JOIN pg_class c ON c.oid = i.indexrelid
+			JOIN pg_class t ON t.oid = i.indrelid
+			JOIN pg_namespace n ON n.oid = c.relnamespace
+			LEFT JOIN pg_stat_all_indexes s ON s.indexrelid = i.indexrelid
+			WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+			  AND n.nspname NOT LIKE 'pg_toast%'
 			ORDER BY schemaname, tablename, indexname
 		`,
 	},

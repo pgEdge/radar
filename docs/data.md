@@ -283,7 +283,7 @@ Collected for each accessible database. Files stored in `databases/{dbname}/`.
 |------|--------|-------------|
 | `extensions.tsv` | `pg_extension` | Installed extensions |
 | `funcs.tsv` | `pg_proc WHERE prokind='f'` | Functions |
-| `indexes.tsv` | `pg_indexes` | Indexes |
+| `indexes.tsv` | `pg_index` + `pg_stat_all_indexes` | Indexes with semantic key, validity, scan counters and size |
 | `languages.tsv` | `pg_language` | Procedural languages |
 | `operators.tsv` | `pg_operator` | Operators |
 | `partitioned_tables.tsv` | `pg_partitioned_table` | Partitioned tables (PG10+) |
