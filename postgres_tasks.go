@@ -105,7 +105,12 @@ WHERE NOT blocked_locks.granted`,
 	{
 		Name:        "databases",
 		ArchivePath: "postgresql/databases.tsv",
-		Query:       "SELECT oid, datname, datdba, encoding, datcollate, datctype FROM pg_database ORDER BY datname",
+		Query: `SELECT oid, datname, datdba, encoding, datcollate, datctype,
+       datistemplate, datallowconn, datconnlimit,
+       datfrozenxid, age(datfrozenxid) AS frozenxid_age,
+       datminmxid, mxid_age(datminmxid) AS minmxid_age
+FROM pg_database
+ORDER BY datname`,
 	},
 	{
 		Name:        "databases_blk",
