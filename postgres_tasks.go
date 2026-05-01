@@ -233,6 +233,11 @@ WHERE state != 'idle'`,
 		Query:       "SELECT * FROM pg_stat_progress_vacuum",
 	},
 	{
+		Name:        "stat_replication_slots",
+		ArchivePath: "postgresql/stat_replication_slots.tsv",
+		Query:       "SELECT * FROM pg_stat_replication_slots ORDER BY slot_name",
+	},
+	{
 		Name:        "stat_slru",
 		ArchivePath: "postgresql/stat_slru.tsv",
 		Query:       "SELECT * FROM pg_stat_slru ORDER BY name",
