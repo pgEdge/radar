@@ -222,7 +222,7 @@ Instance-level PostgreSQL collectors. Files stored in `postgresql/`.
 | File | Source | Description |
 |------|--------|-------------|
 | `postgresql/archiver.tsv` | `pg_stat_archiver` | WAL archiver statistics |
-| `postgresql/available_extensions.tsv` | `pg_available_extensions` | Available extensions |
+| `postgresql/available_extensions.tsv` | `pg_available_extension_versions` | Available extension versions with installed flag, trust and requires metadata |
 | `postgresql/bgwriter.tsv` | `pg_stat_bgwriter` | Background writer statistics |
 | `postgresql/blocking_locks.tsv` | Complex query | Blocking/blocked lock pairs |
 | `postgresql/checkpointer.tsv` | `pg_stat_checkpointer` | Checkpointer statistics |

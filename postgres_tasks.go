@@ -44,7 +44,10 @@ var postgresQueryTasks = []SimpleQueryTask{
 	{
 		Name:        "available_extensions",
 		ArchivePath: "postgresql/available_extensions.tsv",
-		Query:       "SELECT * FROM pg_available_extensions ORDER BY name",
+		Query: `SELECT name, version, installed, superuser, trusted,
+       relocatable, schema, requires, comment
+FROM pg_available_extension_versions
+ORDER BY name, version`,
 	},
 	{
 		Name:        "bgwriter",
