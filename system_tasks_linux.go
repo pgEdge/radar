@@ -335,7 +335,7 @@ var systemCommandTasks = []SimpleCommandTask{
 		Name:        "read_ahead",
 		ArchivePath: "system/read_ahead.out",
 		Command:     "sh",
-		Args:        []string{"-c", "blockdev --getra /dev/sd* /dev/nvme* 2>/dev/null"},
+		Args:        []string{"-c", "for d in /dev/sd* /dev/nvme* /dev/vd* /dev/xvd*; do [ -b \"$d\" ] && ra=$(blockdev --getra \"$d\" 2>/dev/null) && [ -n \"$ra\" ] && echo \"$d: $ra\"; done; exit 0"},
 	},
 	{
 		Name:        "transparent_hugepage",
