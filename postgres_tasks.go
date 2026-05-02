@@ -541,6 +541,8 @@ WHERE datname = current_database()`,
 			       c.relpersistence,
 			       c.reltuples,
 			       c.reloptions,
+			       pg_relation_size(c.oid) AS heap_size,
+			       pg_table_size(c.oid) AS table_size,
 			       c.reltoastrelid::regclass AS toast_table,
 			       CASE WHEN c.reltoastrelid <> 0
 			            THEN pg_relation_size(c.reltoastrelid) END AS toast_size,

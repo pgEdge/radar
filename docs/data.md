@@ -300,7 +300,7 @@ Collected for each accessible database. Files stored in `databases/{dbname}/`.
 | `stat_database.tsv` | `pg_stat_database` | Per-database statistics |
 | `statistics.tsv` | `pg_statistic_ext` | Extended statistics (PG10+) |
 | `subscription_tables.tsv` | `pg_subscription_rel` | Subscription relation states |
-| `tables.tsv` | `pg_class` + `pg_stat_all_tables` | Tables with persistence, options, toast mapping, dead-tup counters and vacuum/analyze timestamps |
+| `tables.tsv` | `pg_class` + `pg_stat_all_tables` | Tables with persistence, options, heap and table sizes, toast mapping, dead-tup counters and vacuum/analyze timestamps |
 | `triggers.tsv` | `pg_trigger` | Triggers |
 | `types.tsv` | `pg_type` | Data types |
 
