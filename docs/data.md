@@ -46,7 +46,8 @@ These collectors only run on Linux systems.
 | `system/dmesg_t.out` | `dmesg -T` | Kernel ring buffer with timestamps |
 | `system/free.out` | `free -h` | Memory usage summary |
 | `system/fstab.out` | `/etc/fstab` | Filesystem table |
-| `system/hostname.out` | `hostname -f` | Fully qualified hostname |
+| `system/hostname.out` | `hostname` | Kernel hostname (gethostname) |
+| `system/hostname_fqdn.out` | `hostname -f` | Fully qualified hostname (resolver canonical name) |
 | `system/hypervisor.out` | `systemd-detect-virt` | Hypervisor detection |
 | `system/ifconfig.out` | `ifconfig -a` | Network interfaces (legacy) |
 | `system/interfaces.out` | `ip -o address` | Network interfaces (one-line) |
@@ -181,7 +182,8 @@ These collectors only run on macOS systems.
 |------|--------|-------------|
 | `system/diskutil_info_all.out` | `diskutil info` (all disks) | Detailed disk information |
 | `system/diskutil_list.out` | `diskutil list` | Disk layout |
-| `system/hostname.out` | `hostname` | Hostname |
+| `system/hostname.out` | `hostname` | Kernel hostname (gethostname) |
+| `system/hostname_fqdn.out` | `hostname -f` | Fully qualified hostname (resolver canonical name) |
 | `system/hypervisor.out` | `sysctl kern.hv_vmm_present` | Hypervisor detection |
 | `system/ifconfig.out` | `ifconfig -a` | Network interfaces |
 | `system/iostat.out` | `iostat -c 5 -w 1` | I/O statistics (5 samples) |
@@ -222,7 +224,7 @@ Instance-level PostgreSQL collectors. Files stored in `postgresql/`.
 | File | Source | Description |
 |------|--------|-------------|
 | `postgresql/archiver.tsv` | `pg_stat_archiver` | WAL archiver statistics |
-| `postgresql/available_extensions.tsv` | `pg_available_extensions` | Available extensions |
+| `postgresql/available_extensions.tsv` | `pg_available_extension_versions` | Available extension versions with installed flag, trust and requires metadata |
 | `postgresql/bgwriter.tsv` | `pg_stat_bgwriter` | Background writer statistics |
 | `postgresql/blocking_locks.tsv` | Complex query | Blocking/blocked lock pairs |
 | `postgresql/checkpointer.tsv` | `pg_stat_checkpointer` | Checkpointer statistics |
@@ -260,7 +262,9 @@ Instance-level PostgreSQL collectors. Files stored in `postgresql/`.
 | `postgresql/stat_progress_copy.tsv` | `pg_stat_progress_copy` | COPY progress (PG14+) |
 | `postgresql/stat_progress_create_index.tsv` | `pg_stat_progress_create_index` | CREATE INDEX progress (PG12+) |
 | `postgresql/stat_progress_vacuum.tsv` | `pg_stat_progress_vacuum` | VACUUM progress (PG9.6+) |
+| `postgresql/stat_replication_slots.tsv` | `pg_stat_replication_slots` | Replication slot stats incl. spill counters (PG14+) |
 | `postgresql/stat_slru.tsv` | `pg_stat_slru` | SLRU cache statistics |
+| `postgresql/stat_ssl.tsv` | `pg_stat_ssl` | Per-backend SSL/TLS state |
 | `postgresql/stat_statements_calls.tsv` | `pg_stat_statements` | Top 100 queries by call count |
 | `postgresql/stat_statements_max_time.tsv` | `pg_stat_statements` | Top 100 queries by max execution time |
 | `postgresql/stat_statements_total_time.tsv` | `pg_stat_statements` | Top 100 queries by total execution time |
@@ -281,21 +285,24 @@ Collected for each accessible database. Files stored in `databases/{dbname}/`.
 
 | File | Source | Description |
 |------|--------|-------------|
+| `bloat.tsv` | `pg_stats` heuristic | Table bloat estimate (heuristic) |
 | `extensions.tsv` | `pg_extension` | Installed extensions |
 | `funcs.tsv` | `pg_proc WHERE prokind='f'` | Functions |
-| `indexes.tsv` | `pg_indexes` | Indexes |
+| `indexes.tsv` | `pg_index` + `pg_stat_all_indexes` | Top 1000 indexes by size with semantic key, validity, scan counters and size |
 | `languages.tsv` | `pg_language` | Procedural languages |
 | `operators.tsv` | `pg_operator` | Operators |
 | `partitioned_tables.tsv` | `pg_partitioned_table` | Partitioned tables (PG10+) |
 | `partitions.tsv` | `pg_inherits` | Partition relationships |
+| `pgstattuple.tsv` | `pgstattuple_approx()` | Authoritative bloat (when `pgstattuple` extension is installed) |
 | `procs.tsv` | `pg_proc WHERE prokind='p'` | Procedures (PG11+) |
 | `publication_tables.tsv` | `pg_publication_tables` | Tables in publications |
 | `publications.tsv` | `pg_publication` | Logical replication publications |
 | `schemas.tsv` | `pg_namespace` | Schemas |
+| `sequences.tsv` | `pg_sequences` | Sequences with last/min/max values (PG10+) |
 | `stat_database.tsv` | `pg_stat_database` | Per-database statistics |
 | `statistics.tsv` | `pg_statistic_ext` | Extended statistics (PG10+) |
 | `subscription_tables.tsv` | `pg_subscription_rel` | Subscription relation states |
-| `tables.tsv` | `pg_tables` | Tables |
+| `tables.tsv` | `pg_class` + `pg_stat_all_tables` | Top 1000 tables by size with persistence, options, heap and table sizes, toast mapping, dead-tup counters and vacuum/analyze timestamps |
 | `triggers.tsv` | `pg_trigger` | Triggers |
 | `types.tsv` | `pg_type` | Data types |
 

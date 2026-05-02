@@ -187,19 +187,20 @@ For a complete reference of all collected data, see [docs/data.md](docs/data.md)
 
 - **Configuration & files**: `pg_db_role_setting`, `pg_file_settings`, `pg_hba.conf`, `pg_hba_file_rules`, `pg_ident.conf`, `pg_settings`, `pg_tablespace`, `postgresql.auto.conf`, `postgresql.conf`, `recovery.conf`, `recovery.done`
 - **Activity & monitoring**: `pg_locks`, `pg_postmaster_start_time()`, `pg_prepared_xacts`, `pg_shmem_allocations`, `pg_stat_activity`
-- **Statistics views**: `pg_stat_archiver`, `pg_stat_bgwriter`, `pg_stat_checkpointer` (PG17+), `pg_stat_database_conflicts`, `pg_stat_io` (PG16+), `pg_stat_slru`, `pg_stat_statements` (if installed), `pg_stat_wal` (PG14+), `pg_stat_wal_receiver`
-- **Replication & WAL**: `pg_current_wal_lsn()`, `pg_replication_origin_status`, `pg_replication_slots`, `pg_stat_replication`, `pg_subscription`
+- **Statistics views**: `pg_stat_archiver`, `pg_stat_bgwriter`, `pg_stat_checkpointer` (PG17+), `pg_stat_database_conflicts`, `pg_stat_io` (PG16+), `pg_stat_slru`, `pg_stat_ssl`, `pg_stat_statements` (if installed), `pg_stat_wal` (PG14+), `pg_stat_wal_receiver`
+- **Replication & WAL**: `pg_current_wal_lsn()`, `pg_replication_origin_status`, `pg_replication_slots`, `pg_stat_replication`, `pg_stat_replication_slots` (PG14+, spill counters), `pg_subscription`
 - **Progress tracking**: `pg_stat_progress_analyze`, `pg_stat_progress_basebackup`, `pg_stat_progress_cluster`, `pg_stat_progress_copy`, `pg_stat_progress_create_index`, `pg_stat_progress_vacuum`
-- **Catalog**: `pg_available_extensions`, `pg_database`, `pg_database_size()`, `pg_roles`, `pg_tablespace_size()`, `version()`
+- **Catalog**: `pg_available_extension_versions`, `pg_database` (incl. `datfrozenxid`/`datminmxid` wraparound headroom and `datconnlimit`), `pg_database_size()`, `pg_roles`, `pg_tablespace_size()`, `version()`
 
 **Per-Database**
 
-- **Schema objects**: `pg_indexes`, `pg_namespace`, `pg_operator`, `pg_tables`, `pg_type`
+- **Schema objects**: `pg_class` + `pg_stat_all_tables` (tables incl. dead-tup counters, vacuum/analyze timestamps, `reloptions`, `reltoastrelid`, `relpersistence`), `pg_index` + `pg_stat_all_indexes` (indexes incl. validity, scan counters, size), `pg_namespace`, `pg_operator`, `pg_sequences`, `pg_type`
 - **Functions & procedures**: `pg_proc`
 - **Triggers & partitioning**: `pg_inherits`, `pg_partitioned_table`, `pg_trigger`
 - **Logical replication**: `pg_publication`, `pg_publication_tables`, `pg_subscription_rel`
-- **Extensions**: `pg_extension`, `pg_language`, `pg_statistic_ext`
+- **Extensions**: `pg_extension`, `pg_language`, `pg_statistic_ext`, `pgstattuple` (if installed — authoritative bloat estimate via `pgstattuple_approx()`)
 - **Statistics**: `pg_stat_database` (conflicts, deadlocks, temp files, stats reset)
+- **Bloat estimate**: heuristic from `pg_stats` (always emitted)
 
 **[pg_statviz](https://github.com/vyruss/pg_statviz) Extension** (if present)
 
