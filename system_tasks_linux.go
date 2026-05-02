@@ -65,6 +65,11 @@ var systemCommandTasks = []SimpleCommandTask{
 		Name:        "hostname",
 		ArchivePath: "system/hostname.out",
 		Command:     "hostname",
+	},
+	{
+		Name:        "hostname_fqdn",
+		ArchivePath: "system/hostname_fqdn.out",
+		Command:     "hostname",
 		Args:        []string{"-f"},
 	},
 	{

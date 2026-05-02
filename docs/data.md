@@ -46,7 +46,8 @@ These collectors only run on Linux systems.
 | `system/dmesg_t.out` | `dmesg -T` | Kernel ring buffer with timestamps |
 | `system/free.out` | `free -h` | Memory usage summary |
 | `system/fstab.out` | `/etc/fstab` | Filesystem table |
-| `system/hostname.out` | `hostname -f` | Fully qualified hostname |
+| `system/hostname.out` | `hostname` | Kernel hostname (gethostname) |
+| `system/hostname_fqdn.out` | `hostname -f` | Fully qualified hostname (resolver canonical name) |
 | `system/hypervisor.out` | `systemd-detect-virt` | Hypervisor detection |
 | `system/ifconfig.out` | `ifconfig -a` | Network interfaces (legacy) |
 | `system/interfaces.out` | `ip -o address` | Network interfaces (one-line) |
@@ -181,7 +182,8 @@ These collectors only run on macOS systems.
 |------|--------|-------------|
 | `system/diskutil_info_all.out` | `diskutil info` (all disks) | Detailed disk information |
 | `system/diskutil_list.out` | `diskutil list` | Disk layout |
-| `system/hostname.out` | `hostname` | Hostname |
+| `system/hostname.out` | `hostname` | Kernel hostname (gethostname) |
+| `system/hostname_fqdn.out` | `hostname -f` | Fully qualified hostname (resolver canonical name) |
 | `system/hypervisor.out` | `sysctl kern.hv_vmm_present` | Hypervisor detection |
 | `system/ifconfig.out` | `ifconfig -a` | Network interfaces |
 | `system/iostat.out` | `iostat -c 5 -w 1` | I/O statistics (5 samples) |
