@@ -424,7 +424,8 @@ ORDER BY wastedbytes DESC, schemaname, tablename
 			LEFT JOIN pg_stat_all_indexes s ON s.indexrelid = i.indexrelid
 			WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
 			  AND n.nspname NOT LIKE 'pg_toast%'
-			ORDER BY schemaname, tablename, indexname
+			ORDER BY pg_relation_size(i.indexrelid) DESC NULLS LAST, schemaname, tablename, indexname
+			LIMIT 1000
 		`,
 	},
 	{
@@ -561,7 +562,8 @@ WHERE datname = current_database()`,
 			WHERE c.relkind IN ('r', 'p')
 			  AND n.nspname NOT IN ('pg_catalog', 'information_schema')
 			  AND n.nspname NOT LIKE 'pg_toast%'
-			ORDER BY schemaname, tablename
+			ORDER BY pg_table_size(c.oid) DESC NULLS LAST, schemaname, tablename
+			LIMIT 1000
 		`,
 	},
 	{

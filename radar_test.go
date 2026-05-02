@@ -536,11 +536,11 @@ func TestQueryTaskColumnsCoverage(t *testing.T) {
 		{"perDB", "tables", []string{
 			"n_live_tup", "n_dead_tup", "last_autovacuum", "last_analyze",
 			"reltuples", "reloptions", "reltoastrelid", "relpersistence",
-			"pg_relation_size", "pg_table_size",
+			"pg_relation_size", "pg_table_size", "LIMIT 1000",
 		}},
 		{"perDB", "indexes", []string{
 			"indrelid", "indclass", "indkey", "indisvalid",
-			"idx_scan", "pg_relation_size",
+			"idx_scan", "pg_relation_size", "LIMIT 1000",
 		}},
 		{"perDB", "sequences", []string{
 			"pg_sequences", "last_value", "max_value", "min_value", "increment_by",

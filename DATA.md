@@ -286,7 +286,7 @@ Collected for each accessible database. Files stored in `databases/{dbname}/`.
 | `bloat.tsv` | `pg_stats` heuristic | Table bloat estimate (heuristic) |
 | `extensions.tsv` | `pg_extension` | Installed extensions |
 | `funcs.tsv` | `pg_proc WHERE prokind='f'` | Functions |
-| `indexes.tsv` | `pg_index` + `pg_stat_all_indexes` | Indexes with semantic key, validity, scan counters and size |
+| `indexes.tsv` | `pg_index` + `pg_stat_all_indexes` | Top 1000 indexes by size with semantic key, validity, scan counters and size |
 | `languages.tsv` | `pg_language` | Procedural languages |
 | `operators.tsv` | `pg_operator` | Operators |
 | `partitioned_tables.tsv` | `pg_partitioned_table` | Partitioned tables (PG10+) |
@@ -300,7 +300,7 @@ Collected for each accessible database. Files stored in `databases/{dbname}/`.
 | `stat_database.tsv` | `pg_stat_database` | Per-database statistics |
 | `statistics.tsv` | `pg_statistic_ext` | Extended statistics (PG10+) |
 | `subscription_tables.tsv` | `pg_subscription_rel` | Subscription relation states |
-| `tables.tsv` | `pg_class` + `pg_stat_all_tables` | Tables with persistence, options, heap and table sizes, toast mapping, dead-tup counters and vacuum/analyze timestamps |
+| `tables.tsv` | `pg_class` + `pg_stat_all_tables` | Top 1000 tables by size with persistence, options, heap and table sizes, toast mapping, dead-tup counters and vacuum/analyze timestamps |
 | `triggers.tsv` | `pg_trigger` | Triggers |
 | `types.tsv` | `pg_type` | Data types |
 
