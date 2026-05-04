@@ -252,7 +252,7 @@ Instance-level PostgreSQL collectors. Files stored in `postgresql/`.
 | `postgresql/replication_slots.tsv` | `pg_replication_slots` | Replication slots |
 | `postgresql/roles.tsv` | `pg_roles` | Database roles |
 | `postgresql/running_activity.tsv` | `pg_stat_activity` | Active connections and queries |
-| `postgresql/running_activity_maxage.tsv` | Complex query | Oldest queries/transactions |
+| `postgresql/running_activity_maxage.tsv` | Complex query | Oldest queries/transactions and longest lock wait |
 | `postgresql/running_locks.tsv` | `pg_locks WHERE granted` | Held locks |
 | `postgresql/shmem_allocations.tsv` | `pg_shmem_allocations` | Shared memory breakdown |
 | `postgresql/stat_io.tsv` | `pg_stat_io` | I/O statistics (PG16+) |

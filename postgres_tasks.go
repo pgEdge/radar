@@ -186,7 +186,10 @@ ORDER BY datname`,
 		Query: `SELECT
     max(clock_timestamp() - query_start) AS max_query_age,
     max(clock_timestamp() - xact_start) AS max_xact_age,
-    max(clock_timestamp() - backend_start) AS max_backend_age
+    max(clock_timestamp() - backend_start) AS max_backend_age,
+    max(clock_timestamp() - state_change)
+        FILTER (WHERE wait_event_type = 'Lock')
+        AS max_lock_wait_age
 FROM pg_stat_activity
 WHERE state != 'idle'`,
 	},
