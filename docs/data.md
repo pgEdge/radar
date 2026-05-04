@@ -11,7 +11,7 @@ Complete reference of all data collected by radar.
 - **Per-Database**: Schema and object collectors (per database)
 - **pg_statviz (optional)**: Time-series statistics collectors (per database)
 
-**Output**: All data collected in a single ZIP file named `radar-{hostname}-{timestamp}.zip`
+**Output**: All data collected in a single ZIP file named `radar-{hostname}-{timestamp}.zip`. The archive root contains a `radar.out` entry identifying the radar binary that produced it (`version` from the build-time `-X main.version` stamp, `commit` from Go's embedded VCS info).
 
 ---
 

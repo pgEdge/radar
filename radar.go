@@ -21,12 +21,44 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
+
+// version is stamped at build time via -ldflags "-X main.version=<tag>".
+// Release builds set it to e.g. "v0.5.0"; unstamped dev builds report "dev".
+var version = "dev"
+
+// writeRadarMeta writes a radar.out entry at the archive root identifying the
+// radar binary that produced the archive. Version comes from the build-time
+// -X main.version stamp; commit comes from Go's embedded VCS info
+// (debug.ReadBuildInfo).
+func writeRadarMeta(zw *zip.Writer) error {
+	commit := "unknown"
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, s := range info.Settings {
+			if s.Key == "vcs.revision" {
+				if len(s.Value) >= 7 {
+					commit = s.Value[:7]
+				} else if s.Value != "" {
+					commit = s.Value
+				}
+				break
+			}
+		}
+	}
+
+	w, err := zw.Create("radar.out")
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(w, "version: %s\ncommit: %s\n", version, commit)
+	return err
+}
 
 // Date/Time Formats
 const TimestampFormat = "20060102-150405"
@@ -239,6 +271,11 @@ func main() {
 
 	// Create ZIP writer
 	zipWriter := zip.NewWriter(outFile)
+
+	// Write radar build identity (version, commit) to the archive root
+	if err := writeRadarMeta(zipWriter); err != nil {
+		errorLog.Printf("Failed to write radar.out: %v", err)
+	}
 
 	// Collect all data
 	if cfg.Verbose {
