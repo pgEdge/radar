@@ -557,7 +557,15 @@ WHERE datname = current_database()`,
 			       s.last_vacuum,
 			       s.last_autovacuum,
 			       s.last_analyze,
-			       s.last_autoanalyze
+			       s.last_autoanalyze,
+			       EXTRACT(EPOCH FROM (clock_timestamp() - s.last_vacuum))::bigint
+			           AS last_vacuum_age_seconds,
+			       EXTRACT(EPOCH FROM (clock_timestamp() - s.last_autovacuum))::bigint
+			           AS last_autovacuum_age_seconds,
+			       EXTRACT(EPOCH FROM (clock_timestamp() - s.last_analyze))::bigint
+			           AS last_analyze_age_seconds,
+			       EXTRACT(EPOCH FROM (clock_timestamp() - s.last_autoanalyze))::bigint
+			           AS last_autoanalyze_age_seconds
 			FROM pg_class c
 			JOIN pg_namespace n ON n.oid = c.relnamespace
 			LEFT JOIN pg_tablespace t ON t.oid = c.reltablespace
