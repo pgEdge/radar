@@ -119,8 +119,12 @@ Options:
     	database name (default "postgres")
   -data-dir string
     	PostgreSQL data directory
+  -exclude string
+    	comma-separated task names to skip (e.g. -exclude bloat,stat_ssl)
   -h string
     	database host (default "localhost")
+  -include string
+    	comma-separated default-disabled task names to enable (e.g. pgstattuple, disabled by default)
   -p int
     	database port (default 5432)
   -skip-postgres

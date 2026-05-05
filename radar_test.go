@@ -502,6 +502,36 @@ func TestNoDuplicatePostgreSQLArchivePaths(t *testing.T) {
 	}
 }
 
+// TestShouldRunTask covers -include / -exclude / default-disabled precedence.
+func TestShouldRunTask(t *testing.T) {
+	tests := []struct {
+		name    string
+		task    string
+		exclude []string
+		include []string
+		want    bool
+	}{
+		{"default task runs", "stat_ssl", nil, nil, true},
+		{"default-disabled task is skipped", "pgstattuple", nil, nil, false},
+		{"per-db default-disabled task is skipped", "mydb/pgstattuple", nil, nil, false},
+		{"include overrides default-disabled", "pgstattuple", nil, []string{"pgstattuple"}, true},
+		{"include overrides per-db default-disabled", "mydb/pgstattuple", nil, []string{"pgstattuple"}, true},
+		{"exclude skips a default-enabled task", "stat_ssl", []string{"stat_ssl"}, nil, false},
+		{"exclude skips a per-db task", "mydb/bloat", []string{"bloat"}, nil, false},
+		{"include wins over exclude", "pgstattuple", []string{"pgstattuple"}, []string{"pgstattuple"}, true},
+		{"unrelated exclude does not affect task", "stat_ssl", []string{"bloat"}, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{Exclude: tt.exclude, Include: tt.include}
+			if got := shouldRunTask(tt.task, cfg); got != tt.want {
+				t.Errorf("shouldRunTask(%q, exclude=%v, include=%v) = %v, want %v",
+					tt.task, tt.exclude, tt.include, got, tt.want)
+			}
+		})
+	}
+}
+
 // TestPerDatabaseTasksStructure verifies all per-database tasks have required fields
 func TestPerDatabaseTasksStructure(t *testing.T) {
 	for i, task := range perDatabaseQueryTasks {

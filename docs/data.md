@@ -293,7 +293,7 @@ Collected for each accessible database. Files stored in `databases/{dbname}/`.
 | `operators.tsv` | `pg_operator` | Operators |
 | `partitioned_tables.tsv` | `pg_partitioned_table` | Partitioned tables (PG10+) |
 | `partitions.tsv` | `pg_inherits` | Partition relationships |
-| `pgstattuple.tsv` | `pgstattuple_approx()` | Authoritative bloat (when `pgstattuple` extension is installed) |
+| `pgstattuple.tsv` | `pgstattuple_approx()` | Authoritative bloat (when `pgstattuple` extension is installed). Disabled by default — run with `-include pgstattuple` because it touches every user table's heap pages. |
 | `procs.tsv` | `pg_proc WHERE prokind='p'` | Procedures (PG11+) |
 | `publication_tables.tsv` | `pg_publication_tables` | Tables in publications |
 | `publications.tsv` | `pg_publication` | Logical replication publications |

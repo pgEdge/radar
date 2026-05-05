@@ -33,6 +33,37 @@ import (
 // Release builds set it to e.g. "v0.5.0"; unstamped dev builds report "dev".
 var version = "dev"
 
+// defaultDisabledTasks lists task names not run unless -include lists them.
+// pgstattuple_approx() reads heap pages of every user table.
+var defaultDisabledTasks = []string{"pgstattuple"}
+
+// shouldRunTask applies -include / -exclude / default-disabled to a task name.
+// -include wins over -exclude wins over the default-disabled set.
+// Per-database tasks are named "dbname/taskname"; the trailing segment is
+// what users type on the command line.
+func shouldRunTask(name string, cfg *Config) bool {
+	short := name
+	if i := strings.LastIndex(name, "/"); i >= 0 {
+		short = name[i+1:]
+	}
+	for _, e := range cfg.Include {
+		if e == short {
+			return true
+		}
+	}
+	for _, x := range cfg.Exclude {
+		if x == short {
+			return false
+		}
+	}
+	for _, d := range defaultDisabledTasks {
+		if d == short {
+			return false
+		}
+	}
+	return true
+}
+
 // writeRadarMeta writes a radar.out entry at the archive root identifying the
 // radar binary that produced the archive. Version comes from the build-time
 // -X main.version stamp; commit comes from Go's embedded VCS info
@@ -105,6 +136,8 @@ type Config struct {
 	// Collection control
 	SkipSystem   bool
 	SkipPostgres bool
+	Exclude      []string
+	Include      []string
 	Verbose      bool
 	VeryVerbose  bool
 }
@@ -318,9 +351,23 @@ func parseConfig() (*Config, error) {
 	flag.StringVar(&cfg.SSLRootCert, "sslrootcert", "", "SSL root certificate file")
 	flag.BoolVar(&cfg.SkipSystem, "skip-system", false, "skip system data collection")
 	flag.BoolVar(&cfg.SkipPostgres, "skip-postgres", false, "skip PostgreSQL data collection")
+	var excludeRaw, includeRaw string
+	flag.StringVar(&excludeRaw, "exclude", "", "comma-separated task names to skip (e.g. -exclude bloat,stat_ssl)")
+	flag.StringVar(&includeRaw, "include", "", "comma-separated default-disabled task names to enable (e.g. pgstattuple, disabled by default)")
 	flag.BoolVar(&cfg.Verbose, "v", false, "verbose output (summary)")
 	flag.BoolVar(&cfg.VeryVerbose, "vv", false, "very verbose output (detailed)")
 	flag.Parse()
+
+	for _, raw := range strings.Split(excludeRaw, ",") {
+		if t := strings.TrimSpace(raw); t != "" {
+			cfg.Exclude = append(cfg.Exclude, t)
+		}
+	}
+	for _, raw := range strings.Split(includeRaw, ",") {
+		if t := strings.TrimSpace(raw); t != "" {
+			cfg.Include = append(cfg.Include, t)
+		}
+	}
 
 	// If -vv is set, also enable -v
 	if cfg.VeryVerbose {
@@ -529,6 +576,12 @@ func collect(cfg *Config, zipWriter *zip.Writer, tasks []CollectionTask) int {
 	collected := 0
 
 	for _, task := range tasks {
+		if !shouldRunTask(task.Name, cfg) {
+			if cfg.VeryVerbose {
+				infoLog.Printf("⊘ %s (excluded)", task.Name)
+			}
+			continue
+		}
 		header := &zip.FileHeader{
 			Name:     task.ArchivePath,
 			Method:   DefaultCompressionMethod,
