@@ -403,6 +403,14 @@ ORDER BY wastedbytes DESC, schemaname, tablename
 		Name:        "indexes",
 		ArchivePath: "databases/%s/indexes.tsv",
 		Query: `
+			WITH params AS MATERIALIZED (
+			    SELECT (count(*) > 1000) AS many_indexes
+			    FROM pg_index i
+			    JOIN pg_class c ON c.oid = i.indexrelid
+			    JOIN pg_namespace n ON n.oid = c.relnamespace
+			    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+			      AND n.nspname NOT LIKE 'pg_toast%'
+			)
 			SELECT n.nspname AS schemaname,
 			       t.relname AS tablename,
 			       c.relname AS indexname,
@@ -416,18 +424,27 @@ ORDER BY wastedbytes DESC, schemaname, tablename
 			       i.indkey::text AS indkey,
 			       pg_get_expr(i.indexprs, i.indrelid) AS indexprs,
 			       pg_get_expr(i.indpred, i.indrelid) AS indpred,
-			       pg_relation_size(i.indexrelid) AS index_size,
+			       c.relpages,
+			       CASE WHEN p.many_indexes AND c.relpages > 0
+			            THEN c.relpages::bigint * current_setting('block_size')::bigint
+			            ELSE pg_relation_size(i.indexrelid)
+			       END AS index_size,
 			       s.idx_scan,
 			       s.idx_tup_read,
 			       s.idx_tup_fetch
 			FROM pg_index i
+			CROSS JOIN params p
 			JOIN pg_class c ON c.oid = i.indexrelid
 			JOIN pg_class t ON t.oid = i.indrelid
 			JOIN pg_namespace n ON n.oid = c.relnamespace
 			LEFT JOIN pg_stat_all_indexes s ON s.indexrelid = i.indexrelid
 			WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
 			  AND n.nspname NOT LIKE 'pg_toast%'
-			ORDER BY pg_relation_size(i.indexrelid) DESC NULLS LAST, schemaname, tablename, indexname
+			ORDER BY CASE WHEN p.many_indexes AND c.relpages > 0
+			              THEN c.relpages::bigint * current_setting('block_size')::bigint
+			              ELSE pg_relation_size(i.indexrelid)
+			         END DESC NULLS LAST,
+			         schemaname, tablename, indexname
 			LIMIT 1000
 		`,
 	},
@@ -535,6 +552,14 @@ WHERE datname = current_database()`,
 		Name:        "tables",
 		ArchivePath: "databases/%s/tables.tsv",
 		Query: `
+			WITH params AS MATERIALIZED (
+			    SELECT (count(*) > 1000) AS many_tables
+			    FROM pg_class c
+			    JOIN pg_namespace n ON n.oid = c.relnamespace
+			    WHERE c.relkind IN ('r', 'p')
+			      AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+			      AND n.nspname NOT LIKE 'pg_toast%'
+			)
 			SELECT n.nspname AS schemaname,
 			       c.relname AS tablename,
 			       pg_get_userbyid(c.relowner) AS tableowner,
@@ -544,12 +569,23 @@ WHERE datname = current_database()`,
 			       c.relhastriggers AS hastriggers,
 			       c.relpersistence,
 			       c.reltuples,
+			       c.relpages,
 			       c.reloptions,
-			       pg_relation_size(c.oid) AS heap_size,
-			       pg_table_size(c.oid) AS table_size,
+			       CASE WHEN p.many_tables AND c.relpages > 0
+			            THEN c.relpages::bigint * current_setting('block_size')::bigint
+			            ELSE pg_relation_size(c.oid)
+			       END AS heap_size,
+			       CASE WHEN p.many_tables AND c.relpages > 0
+			            THEN (c.relpages + COALESCE(toast.relpages, 0))::bigint
+			                 * current_setting('block_size')::bigint
+			            ELSE pg_table_size(c.oid)
+			       END AS table_size,
 			       c.reltoastrelid::regclass AS toast_table,
-			       CASE WHEN c.reltoastrelid <> 0
-			            THEN pg_relation_size(c.reltoastrelid) END AS toast_size,
+			       CASE WHEN c.reltoastrelid = 0 THEN NULL
+			            WHEN p.many_tables AND toast.relpages > 0
+			            THEN toast.relpages::bigint * current_setting('block_size')::bigint
+			            ELSE pg_relation_size(c.reltoastrelid)
+			       END AS toast_size,
 			       s.n_live_tup,
 			       s.n_dead_tup,
 			       s.n_mod_since_analyze,
@@ -567,13 +603,20 @@ WHERE datname = current_database()`,
 			       EXTRACT(EPOCH FROM (clock_timestamp() - s.last_autoanalyze))::bigint
 			           AS last_autoanalyze_age_seconds
 			FROM pg_class c
+			CROSS JOIN params p
 			JOIN pg_namespace n ON n.oid = c.relnamespace
+			LEFT JOIN pg_class toast ON toast.oid = c.reltoastrelid
 			LEFT JOIN pg_tablespace t ON t.oid = c.reltablespace
 			LEFT JOIN pg_stat_all_tables s ON s.relid = c.oid
 			WHERE c.relkind IN ('r', 'p')
 			  AND n.nspname NOT IN ('pg_catalog', 'information_schema')
 			  AND n.nspname NOT LIKE 'pg_toast%'
-			ORDER BY pg_table_size(c.oid) DESC NULLS LAST, schemaname, tablename
+			ORDER BY CASE WHEN p.many_tables AND c.relpages > 0
+			              THEN (c.relpages + COALESCE(toast.relpages, 0))::bigint
+			                   * current_setting('block_size')::bigint
+			              ELSE pg_table_size(c.oid)
+			         END DESC NULLS LAST,
+			         schemaname, tablename
 			LIMIT 1000
 		`,
 	},
