@@ -22,6 +22,7 @@ import (
 	"os/exec"
 	"os/user"
 	"runtime/debug"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -46,22 +47,13 @@ func shouldRunTask(name string, cfg *Config) bool {
 	if i := strings.LastIndex(name, "/"); i >= 0 {
 		short = name[i+1:]
 	}
-	for _, e := range cfg.Include {
-		if e == short {
-			return true
-		}
+	if slices.Contains(cfg.Include, short) {
+		return true
 	}
-	for _, x := range cfg.Exclude {
-		if x == short {
-			return false
-		}
+	if slices.Contains(cfg.Exclude, short) {
+		return false
 	}
-	for _, d := range defaultDisabledTasks {
-		if d == short {
-			return false
-		}
-	}
-	return true
+	return !slices.Contains(defaultDisabledTasks, short)
 }
 
 // writeRadarMeta writes a radar.out entry at the archive root identifying the
@@ -557,6 +549,14 @@ func collectAll(cfg *Config, zipWriter *zip.Writer) int {
 		}
 	}
 
+	// Filter both phases up-front; log the skipped set once, in verbose mode.
+	systemTasks, systemSkipped := filterTasks(systemTasks, cfg)
+	pgTasks, pgSkipped := filterTasks(pgTasks, cfg)
+	skipped := append(systemSkipped, pgSkipped...)
+	if len(skipped) > 0 && cfg.Verbose {
+		infoLog.Printf("Skipping %d task(s): %s", len(skipped), strings.Join(skipped, ", "))
+	}
+
 	// PHASE 1: Collect system tasks
 	if len(systemTasks) > 0 {
 		collected += collect(cfg, zipWriter, systemTasks)
@@ -570,18 +570,25 @@ func collectAll(cfg *Config, zipWriter *zip.Writer) int {
 	return collected
 }
 
+// filterTasks partitions tasks into the runnable set and the names of skipped
+// tasks based on -include / -exclude / default-disabled rules.
+func filterTasks(tasks []CollectionTask, cfg *Config) (runnable []CollectionTask, skipped []string) {
+	for _, t := range tasks {
+		if shouldRunTask(t.Name, cfg) {
+			runnable = append(runnable, t)
+		} else {
+			skipped = append(skipped, t.Name)
+		}
+	}
+	return
+}
+
 // collect executes tasks sequentially and streams directly to ZIP
 // Returns: collected count only
 func collect(cfg *Config, zipWriter *zip.Writer, tasks []CollectionTask) int {
 	collected := 0
 
 	for _, task := range tasks {
-		if !shouldRunTask(task.Name, cfg) {
-			if cfg.VeryVerbose {
-				infoLog.Printf("⊘ %s (excluded)", task.Name)
-			}
-			continue
-		}
 		header := &zip.FileHeader{
 			Name:     task.ArchivePath,
 			Method:   DefaultCompressionMethod,
