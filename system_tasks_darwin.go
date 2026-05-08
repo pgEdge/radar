@@ -50,6 +50,12 @@ var systemCommandTasks = []SimpleCommandTask{
 		Args:        []string{},
 	},
 	{
+		Name:        "hostname_fqdn",
+		ArchivePath: "system/hostname_fqdn.out",
+		Command:     "hostname",
+		Args:        []string{"-f"},
+	},
+	{
 		Name:        "hypervisor-check",
 		ArchivePath: "system/hypervisor.out",
 		Command:     "sh",

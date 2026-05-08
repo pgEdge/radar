@@ -502,6 +502,36 @@ func TestNoDuplicatePostgreSQLArchivePaths(t *testing.T) {
 	}
 }
 
+// TestShouldRunTask covers -include / -exclude / default-disabled precedence.
+func TestShouldRunTask(t *testing.T) {
+	tests := []struct {
+		name    string
+		task    string
+		exclude []string
+		include []string
+		want    bool
+	}{
+		{"default task runs", "stat_ssl", nil, nil, true},
+		{"default-disabled task is skipped", "pgstattuple", nil, nil, false},
+		{"per-db default-disabled task is skipped", "mydb/pgstattuple", nil, nil, false},
+		{"include overrides default-disabled", "pgstattuple", nil, []string{"pgstattuple"}, true},
+		{"include overrides per-db default-disabled", "mydb/pgstattuple", nil, []string{"pgstattuple"}, true},
+		{"exclude skips a default-enabled task", "stat_ssl", []string{"stat_ssl"}, nil, false},
+		{"exclude skips a per-db task", "mydb/bloat", []string{"bloat"}, nil, false},
+		{"include wins over exclude", "pgstattuple", []string{"pgstattuple"}, []string{"pgstattuple"}, true},
+		{"unrelated exclude does not affect task", "stat_ssl", []string{"bloat"}, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{Exclude: tt.exclude, Include: tt.include}
+			if got := shouldRunTask(tt.task, cfg); got != tt.want {
+				t.Errorf("shouldRunTask(%q, exclude=%v, include=%v) = %v, want %v",
+					tt.task, tt.exclude, tt.include, got, tt.want)
+			}
+		})
+	}
+}
+
 // TestPerDatabaseTasksStructure verifies all per-database tasks have required fields
 func TestPerDatabaseTasksStructure(t *testing.T) {
 	for i, task := range perDatabaseQueryTasks {
@@ -516,6 +546,78 @@ func TestPerDatabaseTasksStructure(t *testing.T) {
 		}
 		if !strings.Contains(task.ArchivePath, "%s") {
 			t.Errorf("perDatabaseQueryTasks[%d] (%s) ArchivePath missing %%s placeholder: %s", i, task.Name, task.ArchivePath)
+		}
+	}
+}
+
+// TestQueryTaskColumnsCoverage asserts that the queries we expanded continue
+// to reference the column tokens we rely on. Catches accidental column
+// removal during future edits to these query strings.
+func TestQueryTaskColumnsCoverage(t *testing.T) {
+	checks := []struct {
+		taskList    string
+		taskName    string
+		mustContain []string
+	}{
+		{"postgres", "databases", []string{
+			"datfrozenxid", "datminmxid", "datconnlimit",
+			"datistemplate", "datallowconn",
+		}},
+		{"perDB", "tables", []string{
+			"n_live_tup", "n_dead_tup", "last_autovacuum", "last_analyze",
+			"reltuples", "reloptions", "reltoastrelid", "relpersistence",
+			"relpages", "pg_relation_size", "pg_table_size", "LIMIT 1000",
+			"many_tables", "current_setting('block_size')",
+			"last_vacuum_age_seconds", "last_autovacuum_age_seconds",
+			"last_analyze_age_seconds", "last_autoanalyze_age_seconds",
+		}},
+		{"perDB", "indexes", []string{
+			"indrelid", "indclass", "indkey", "indisvalid",
+			"idx_scan", "pg_relation_size", "LIMIT 1000",
+			"many_indexes", "current_setting('block_size')",
+		}},
+		{"perDB", "sequences", []string{
+			"pg_sequences", "last_value", "max_value", "min_value", "increment_by",
+		}},
+		{"postgres", "stat_ssl", []string{
+			"pg_stat_ssl", "ssl", "cipher",
+		}},
+		{"postgres", "stat_replication_slots", []string{
+			"pg_stat_replication_slots",
+		}},
+		{"perDB", "bloat", []string{
+			"table_bloat_ratio", "wastedbytes",
+		}},
+		{"perDB", "pgstattuple", []string{
+			"pgstattuple_approx",
+		}},
+	}
+
+	taskByName := func(list []SimpleQueryTask, name string) *SimpleQueryTask {
+		for i := range list {
+			if list[i].Name == name {
+				return &list[i]
+			}
+		}
+		return nil
+	}
+
+	for _, c := range checks {
+		var task *SimpleQueryTask
+		switch c.taskList {
+		case "postgres":
+			task = taskByName(postgresQueryTasks, c.taskName)
+		case "perDB":
+			task = taskByName(perDatabaseQueryTasks, c.taskName)
+		}
+		if task == nil {
+			t.Errorf("task %q not found in %s tasks", c.taskName, c.taskList)
+			continue
+		}
+		for _, want := range c.mustContain {
+			if !strings.Contains(task.Query, want) {
+				t.Errorf("task %q query missing expected token %q", c.taskName, want)
+			}
 		}
 	}
 }

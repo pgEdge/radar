@@ -44,7 +44,10 @@ var postgresQueryTasks = []SimpleQueryTask{
 	{
 		Name:        "available_extensions",
 		ArchivePath: "postgresql/available_extensions.tsv",
-		Query:       "SELECT * FROM pg_available_extensions ORDER BY name",
+		Query: `SELECT name, version, installed, superuser, trusted,
+       relocatable, schema, requires, comment
+FROM pg_available_extension_versions
+ORDER BY name, version`,
 	},
 	{
 		Name:        "bgwriter",
@@ -105,7 +108,12 @@ WHERE NOT blocked_locks.granted`,
 	{
 		Name:        "databases",
 		ArchivePath: "postgresql/databases.tsv",
-		Query:       "SELECT oid, datname, datdba, encoding, datcollate, datctype FROM pg_database ORDER BY datname",
+		Query: `SELECT oid, datname, datdba, encoding, datcollate, datctype,
+       datistemplate, datallowconn, datconnlimit,
+       datfrozenxid, age(datfrozenxid) AS frozenxid_age,
+       datminmxid, mxid_age(datminmxid) AS minmxid_age
+FROM pg_database
+ORDER BY datname`,
 	},
 	{
 		Name:        "databases_blk",
@@ -178,7 +186,10 @@ WHERE NOT blocked_locks.granted`,
 		Query: `SELECT
     max(clock_timestamp() - query_start) AS max_query_age,
     max(clock_timestamp() - xact_start) AS max_xact_age,
-    max(clock_timestamp() - backend_start) AS max_backend_age
+    max(clock_timestamp() - backend_start) AS max_backend_age,
+    max(clock_timestamp() - state_change)
+        FILTER (WHERE wait_event_type = 'Lock')
+        AS max_lock_wait_age
 FROM pg_stat_activity
 WHERE state != 'idle'`,
 	},
@@ -228,9 +239,24 @@ WHERE state != 'idle'`,
 		Query:       "SELECT * FROM pg_stat_progress_vacuum",
 	},
 	{
+		Name:        "stat_replication_slots",
+		ArchivePath: "postgresql/stat_replication_slots.tsv",
+		Query:       "SELECT * FROM pg_stat_replication_slots ORDER BY slot_name",
+	},
+	{
 		Name:        "stat_slru",
 		ArchivePath: "postgresql/stat_slru.tsv",
 		Query:       "SELECT * FROM pg_stat_slru ORDER BY name",
+	},
+	{
+		Name:        "stat_ssl",
+		ArchivePath: "postgresql/stat_ssl.tsv",
+		Query: `SELECT s.pid, s.ssl, s.version, s.cipher, s.bits,
+       s.client_dn, s.client_serial, s.issuer_dn,
+       a.usename, a.application_name, a.client_addr
+FROM pg_stat_ssl s
+LEFT JOIN pg_stat_activity a ON a.pid = s.pid
+ORDER BY s.pid`,
 	},
 	{
 		Name:        "stat_statements_calls",
@@ -299,6 +325,71 @@ WHERE state != 'idle'`,
 // These are per-database tasks - ArchivePath will be formatted with dbname
 var perDatabaseQueryTasks = []SimpleQueryTask{
 	{
+		Name:        "bloat",
+		ArchivePath: "databases/%s/bloat.tsv",
+		Query: `
+SELECT current_database() AS current_database,
+       schemaname,
+       tablename,
+       ROUND((CASE WHEN otta = 0 THEN 0.0
+                   ELSE sml.relpages::FLOAT / otta END)::NUMERIC, 1)
+         AS table_bloat_ratio,
+       CASE WHEN relpages < otta THEN 0
+            ELSE bs * (sml.relpages - otta)::BIGINT END AS wastedbytes,
+       iname,
+       ituples,
+       ipages,
+       iotta
+FROM (
+  SELECT schemaname, tablename, cc.reltuples, cc.relpages, bs,
+         CEIL((cc.reltuples *
+               ((datahdr + ma -
+                 (CASE WHEN datahdr % ma = 0 THEN ma
+                       ELSE datahdr % ma END)) + nullhdr2 + 4))
+              / (bs - 20::FLOAT)) AS otta,
+         COALESCE(c2.relname, '?') AS iname,
+         COALESCE(c2.reltuples, 0) AS ituples,
+         COALESCE(c2.relpages, 0) AS ipages,
+         COALESCE(CEIL((c2.reltuples * (datahdr - 12))
+                       / (bs - 20::FLOAT)), 0) AS iotta
+  FROM (
+    SELECT ma, bs, schemaname, tablename,
+           (datawidth +
+            (hdr + ma -
+             (CASE WHEN hdr % ma = 0 THEN ma
+                   ELSE hdr % ma END)))::NUMERIC AS datahdr,
+           (maxfracsum *
+            (nullhdr + ma -
+             (CASE WHEN nullhdr % ma = 0 THEN ma
+                   ELSE nullhdr % ma END))) AS nullhdr2
+    FROM (
+      SELECT schemaname, tablename, hdr, ma, bs,
+             SUM((1 - null_frac) * avg_width) AS datawidth,
+             MAX(null_frac) AS maxfracsum,
+             hdr + (SELECT 1 + COUNT(*) / 8
+                    FROM pg_stats s2
+                    WHERE null_frac <> 0
+                      AND s2.schemaname = s.schemaname
+                      AND s2.tablename = s.tablename) AS nullhdr
+      FROM pg_stats s,
+           (SELECT (SELECT current_setting('block_size')::NUMERIC)
+                       AS bs,
+                   CASE WHEN SUBSTRING(v, 12, 3)
+                              IN ('8.0', '8.1', '8.2') THEN 27
+                        ELSE 23 END AS hdr,
+                   CASE WHEN v ~ 'mingw32' THEN 8
+                        ELSE 4 END AS ma
+            FROM (SELECT version() AS v) AS foo) AS constants
+      GROUP BY 1, 2, 3, 4, 5) AS foo) AS rs
+  JOIN pg_class cc ON cc.relname = rs.tablename
+  JOIN pg_namespace nn ON cc.relnamespace = nn.oid
+                      AND nn.nspname = rs.schemaname
+  LEFT JOIN pg_index i ON indrelid = cc.oid
+  LEFT JOIN pg_class c2 ON c2.oid = i.indexrelid) AS sml
+ORDER BY wastedbytes DESC, schemaname, tablename
+		`,
+	},
+	{
 		Name:        "extensions",
 		ArchivePath: "databases/%s/extensions.tsv",
 		Query:       "SELECT * FROM pg_extension ORDER BY extname",
@@ -312,9 +403,49 @@ var perDatabaseQueryTasks = []SimpleQueryTask{
 		Name:        "indexes",
 		ArchivePath: "databases/%s/indexes.tsv",
 		Query: `
-			SELECT schemaname, tablename, indexname, indexdef
-			FROM pg_indexes
-			ORDER BY schemaname, tablename, indexname
+			WITH params AS MATERIALIZED (
+			    SELECT (count(*) > 1000) AS many_indexes
+			    FROM pg_index i
+			    JOIN pg_class c ON c.oid = i.indexrelid
+			    JOIN pg_namespace n ON n.oid = c.relnamespace
+			    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+			      AND n.nspname NOT LIKE 'pg_toast%'
+			)
+			SELECT n.nspname AS schemaname,
+			       t.relname AS tablename,
+			       c.relname AS indexname,
+			       pg_get_indexdef(i.indexrelid) AS indexdef,
+			       i.indrelid::regclass AS indrelid,
+			       i.indexrelid::regclass AS indexrelid,
+			       i.indisunique,
+			       i.indisprimary,
+			       i.indisvalid,
+			       i.indclass::text AS indclass,
+			       i.indkey::text AS indkey,
+			       pg_get_expr(i.indexprs, i.indrelid) AS indexprs,
+			       pg_get_expr(i.indpred, i.indrelid) AS indpred,
+			       c.relpages,
+			       CASE WHEN p.many_indexes AND c.relpages > 0
+			            THEN c.relpages::bigint * current_setting('block_size')::bigint
+			            ELSE pg_relation_size(i.indexrelid)
+			       END AS index_size,
+			       s.idx_scan,
+			       s.idx_tup_read,
+			       s.idx_tup_fetch
+			FROM pg_index i
+			CROSS JOIN params p
+			JOIN pg_class c ON c.oid = i.indexrelid
+			JOIN pg_class t ON t.oid = i.indrelid
+			JOIN pg_namespace n ON n.oid = c.relnamespace
+			LEFT JOIN pg_stat_all_indexes s ON s.indexrelid = i.indexrelid
+			WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+			  AND n.nspname NOT LIKE 'pg_toast%'
+			ORDER BY CASE WHEN p.many_indexes AND c.relpages > 0
+			              THEN c.relpages::bigint * current_setting('block_size')::bigint
+			              ELSE pg_relation_size(i.indexrelid)
+			         END DESC NULLS LAST,
+			         schemaname, tablename, indexname
+			LIMIT 1000
 		`,
 	},
 	{
@@ -344,6 +475,28 @@ var perDatabaseQueryTasks = []SimpleQueryTask{
 		`,
 	},
 	{
+		Name:        "pgstattuple",
+		ArchivePath: "databases/%s/pgstattuple.tsv",
+		Query: `SELECT n.nspname AS schemaname,
+       c.relname AS tablename,
+       p.table_len,
+       p.approx_tuple_count AS tuple_count,
+       p.approx_tuple_len AS tuple_len,
+       p.approx_tuple_percent AS tuple_percent,
+       p.dead_tuple_count,
+       p.dead_tuple_len,
+       p.dead_tuple_percent,
+       p.approx_free_space AS free_space,
+       p.approx_free_percent AS free_percent
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+CROSS JOIN LATERAL pgstattuple_approx(c.oid) p
+WHERE c.relkind IN ('r', 'm')
+  AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+  AND n.nspname NOT LIKE 'pg_toast%'
+ORDER BY p.dead_tuple_percent DESC NULLS LAST`,
+	},
+	{
 		Name:        "procs",
 		ArchivePath: "databases/%s/procs.tsv",
 		Query:       "SELECT oid, proname, pronamespace, proowner, prolang, prokind FROM pg_proc WHERE prokind = 'p' ORDER BY proname",
@@ -362,6 +515,16 @@ var perDatabaseQueryTasks = []SimpleQueryTask{
 		Name:        "schemas",
 		ArchivePath: "databases/%s/schemas.tsv",
 		Query:       "SELECT * FROM pg_namespace ORDER BY nspname",
+	},
+	{
+		Name:        "sequences",
+		ArchivePath: "databases/%s/sequences.tsv",
+		Query: `SELECT schemaname, sequencename,
+       data_type::regtype::text AS data_type,
+       last_value, max_value, min_value, increment_by,
+       cycle, cache_size
+FROM pg_sequences
+ORDER BY schemaname, sequencename`,
 	},
 	{
 		Name:        "stat_database",
@@ -389,9 +552,72 @@ WHERE datname = current_database()`,
 		Name:        "tables",
 		ArchivePath: "databases/%s/tables.tsv",
 		Query: `
-			SELECT schemaname, tablename, tableowner, tablespace, hasindexes, hasrules, hastriggers
-			FROM pg_tables
-			ORDER BY schemaname, tablename
+			WITH params AS MATERIALIZED (
+			    SELECT (count(*) > 1000) AS many_tables
+			    FROM pg_class c
+			    JOIN pg_namespace n ON n.oid = c.relnamespace
+			    WHERE c.relkind IN ('r', 'p')
+			      AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+			      AND n.nspname NOT LIKE 'pg_toast%'
+			)
+			SELECT n.nspname AS schemaname,
+			       c.relname AS tablename,
+			       pg_get_userbyid(c.relowner) AS tableowner,
+			       t.spcname AS tablespace,
+			       c.relhasindex AS hasindexes,
+			       c.relhasrules AS hasrules,
+			       c.relhastriggers AS hastriggers,
+			       c.relpersistence,
+			       c.reltuples,
+			       c.relpages,
+			       c.reloptions,
+			       CASE WHEN p.many_tables AND c.relpages > 0
+			            THEN c.relpages::bigint * current_setting('block_size')::bigint
+			            ELSE pg_relation_size(c.oid)
+			       END AS heap_size,
+			       CASE WHEN p.many_tables AND c.relpages > 0
+			            THEN (c.relpages + COALESCE(toast.relpages, 0))::bigint
+			                 * current_setting('block_size')::bigint
+			            ELSE pg_table_size(c.oid)
+			       END AS table_size,
+			       c.reltoastrelid::regclass AS toast_table,
+			       CASE WHEN c.reltoastrelid = 0 THEN NULL
+			            WHEN p.many_tables AND toast.relpages > 0
+			            THEN toast.relpages::bigint * current_setting('block_size')::bigint
+			            ELSE pg_relation_size(c.reltoastrelid)
+			       END AS toast_size,
+			       s.n_live_tup,
+			       s.n_dead_tup,
+			       s.n_mod_since_analyze,
+			       s.n_ins_since_vacuum,
+			       s.last_vacuum,
+			       s.last_autovacuum,
+			       s.last_analyze,
+			       s.last_autoanalyze,
+			       EXTRACT(EPOCH FROM (clock_timestamp() - s.last_vacuum))::bigint
+			           AS last_vacuum_age_seconds,
+			       EXTRACT(EPOCH FROM (clock_timestamp() - s.last_autovacuum))::bigint
+			           AS last_autovacuum_age_seconds,
+			       EXTRACT(EPOCH FROM (clock_timestamp() - s.last_analyze))::bigint
+			           AS last_analyze_age_seconds,
+			       EXTRACT(EPOCH FROM (clock_timestamp() - s.last_autoanalyze))::bigint
+			           AS last_autoanalyze_age_seconds
+			FROM pg_class c
+			CROSS JOIN params p
+			JOIN pg_namespace n ON n.oid = c.relnamespace
+			LEFT JOIN pg_class toast ON toast.oid = c.reltoastrelid
+			LEFT JOIN pg_tablespace t ON t.oid = c.reltablespace
+			LEFT JOIN pg_stat_all_tables s ON s.relid = c.oid
+			WHERE c.relkind IN ('r', 'p')
+			  AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+			  AND n.nspname NOT LIKE 'pg_toast%'
+			ORDER BY CASE WHEN p.many_tables AND c.relpages > 0
+			              THEN (c.relpages + COALESCE(toast.relpages, 0))::bigint
+			                   * current_setting('block_size')::bigint
+			              ELSE pg_table_size(c.oid)
+			         END DESC NULLS LAST,
+			         schemaname, tablename
+			LIMIT 1000
 		`,
 	},
 	{

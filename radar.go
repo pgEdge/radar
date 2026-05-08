@@ -21,12 +21,67 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"runtime/debug"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
+
+// version is stamped at build time via -ldflags "-X main.version=<tag>".
+// Release builds set it to e.g. "v0.5.0"; unstamped dev builds report "dev".
+var version = "dev"
+
+// defaultDisabledTasks lists task names not run unless -include lists them.
+// pgstattuple_approx() reads heap pages of every user table.
+var defaultDisabledTasks = []string{"pgstattuple"}
+
+// shouldRunTask applies -include / -exclude / default-disabled to a task name.
+// -include wins over -exclude wins over the default-disabled set.
+// Per-database tasks are named "dbname/taskname"; the trailing segment is
+// what users type on the command line.
+func shouldRunTask(name string, cfg *Config) bool {
+	short := name
+	if i := strings.LastIndex(name, "/"); i >= 0 {
+		short = name[i+1:]
+	}
+	if slices.Contains(cfg.Include, short) {
+		return true
+	}
+	if slices.Contains(cfg.Exclude, short) {
+		return false
+	}
+	return !slices.Contains(defaultDisabledTasks, short)
+}
+
+// writeRadarMeta writes a radar.out entry at the archive root identifying the
+// radar binary that produced the archive. Version comes from the build-time
+// -X main.version stamp; commit comes from Go's embedded VCS info
+// (debug.ReadBuildInfo).
+func writeRadarMeta(zw *zip.Writer) error {
+	commit := "unknown"
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, s := range info.Settings {
+			if s.Key == "vcs.revision" {
+				if len(s.Value) >= 7 {
+					commit = s.Value[:7]
+				} else if s.Value != "" {
+					commit = s.Value
+				}
+				break
+			}
+		}
+	}
+
+	w, err := zw.Create("radar.out")
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(w, "version: %s\ncommit: %s\n", version, commit)
+	return err
+}
 
 // Date/Time Formats
 const TimestampFormat = "20060102-150405"
@@ -73,6 +128,8 @@ type Config struct {
 	// Collection control
 	SkipSystem   bool
 	SkipPostgres bool
+	Exclude      []string
+	Include      []string
 	Verbose      bool
 	VeryVerbose  bool
 }
@@ -240,6 +297,11 @@ func main() {
 	// Create ZIP writer
 	zipWriter := zip.NewWriter(outFile)
 
+	// Write radar build identity (version, commit) to the archive root
+	if err := writeRadarMeta(zipWriter); err != nil {
+		errorLog.Printf("Failed to write radar.out: %v", err)
+	}
+
 	// Collect all data
 	if cfg.Verbose {
 		infoLog.Println("Starting data collection...")
@@ -281,9 +343,23 @@ func parseConfig() (*Config, error) {
 	flag.StringVar(&cfg.SSLRootCert, "sslrootcert", "", "SSL root certificate file")
 	flag.BoolVar(&cfg.SkipSystem, "skip-system", false, "skip system data collection")
 	flag.BoolVar(&cfg.SkipPostgres, "skip-postgres", false, "skip PostgreSQL data collection")
+	var excludeRaw, includeRaw string
+	flag.StringVar(&excludeRaw, "exclude", "", "comma-separated task names to skip (e.g. -exclude bloat,stat_ssl)")
+	flag.StringVar(&includeRaw, "include", "", "comma-separated default-disabled task names to enable (e.g. pgstattuple, disabled by default)")
 	flag.BoolVar(&cfg.Verbose, "v", false, "verbose output (summary)")
 	flag.BoolVar(&cfg.VeryVerbose, "vv", false, "very verbose output (detailed)")
 	flag.Parse()
+
+	for _, raw := range strings.Split(excludeRaw, ",") {
+		if t := strings.TrimSpace(raw); t != "" {
+			cfg.Exclude = append(cfg.Exclude, t)
+		}
+	}
+	for _, raw := range strings.Split(includeRaw, ",") {
+		if t := strings.TrimSpace(raw); t != "" {
+			cfg.Include = append(cfg.Include, t)
+		}
+	}
 
 	// If -vv is set, also enable -v
 	if cfg.VeryVerbose {
@@ -473,6 +549,14 @@ func collectAll(cfg *Config, zipWriter *zip.Writer) int {
 		}
 	}
 
+	// Filter both phases up-front; log the skipped set once, in verbose mode.
+	systemTasks, systemSkipped := filterTasks(systemTasks, cfg)
+	pgTasks, pgSkipped := filterTasks(pgTasks, cfg)
+	skipped := append(systemSkipped, pgSkipped...)
+	if len(skipped) > 0 && cfg.Verbose {
+		infoLog.Printf("Skipping %d task(s): %s", len(skipped), strings.Join(skipped, ", "))
+	}
+
 	// PHASE 1: Collect system tasks
 	if len(systemTasks) > 0 {
 		collected += collect(cfg, zipWriter, systemTasks)
@@ -484,6 +568,19 @@ func collectAll(cfg *Config, zipWriter *zip.Writer) int {
 	}
 
 	return collected
+}
+
+// filterTasks partitions tasks into the runnable set and the names of skipped
+// tasks based on -include / -exclude / default-disabled rules.
+func filterTasks(tasks []CollectionTask, cfg *Config) (runnable []CollectionTask, skipped []string) {
+	for _, t := range tasks {
+		if shouldRunTask(t.Name, cfg) {
+			runnable = append(runnable, t)
+		} else {
+			skipped = append(skipped, t.Name)
+		}
+	}
+	return
 }
 
 // collect executes tasks sequentially and streams directly to ZIP
