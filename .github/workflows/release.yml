@@ -81,6 +81,11 @@ jobs:
         steps:
             - name: Checkout code
               uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+              with:
+                  # GoReleaser + the pgedge action clones use tokens from env /
+                  # explicit URLs, never the git remote, so don't persist the
+                  # workflow token into .git/config where later steps could read it.
+                  persist-credentials: false
 
             - name: Checkout pgedge-detect-build-matrix
               env:
@@ -186,6 +191,9 @@ jobs:
               uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
               with:
                   fetch-depth: 0
+                  # GoReleaser publishes via GITHUB_TOKEN from env, not the git
+                  # remote — don't leave the token in .git/config for later steps.
+                  persist-credentials: false
 
             - name: Set up Go
               uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
@@ -206,13 +214,26 @@ jobs:
                   # right version even in snapshot mode.
                   GORELEASER_CURRENT_TAG: ${{ github.event.inputs.simulate_tag || github.ref_name }}
 
-            - name: Stage LICENCE.md / README.md alongside the binaries
+            - name: Stage release binaries + docs for packaging
               run: |
                   set -euo pipefail
-                  # radar's packaging (RPM Source1/Source2 and the deb build)
-                  # needs LICENCE.md and README.md, which GoReleaser's `binary`
-                  # archive does not emit; stage them next to the binaries.
-                  # dist/ is runner-owned (native goreleaser-action), so no sudo.
+                  # GoReleaser's `binary` format leaves each binary under an
+                  # internal dist/radar_<os>_<arch>*/ dir and only applies the
+                  # radar-linux-<arch> name when UPLOADING to the GitHub release
+                  # (recorded in artifacts.json) — it never writes a
+                  # dist/radar-linux-<arch> file. Materialise those names here so
+                  # the release-artifacts upload (and hence the packaging jobs)
+                  # get the binaries under the names build-rpm.sh / build-deb.sh
+                  # expect (release-artifacts/radar-linux-<arch>).
+                  jq -r '.[] | select(.type=="Binary" and (.name|startswith("radar-linux-"))) | "\(.path)\t\(.name)"' \
+                      dist/artifacts.json \
+                  | while IFS=$'\t' read -r path name; do
+                        echo "staging dist/${name} <- ${path}"
+                        cp "${path}" "dist/${name}"
+                    done
+                  # RPM Source1/Source2 and the deb build also need these docs,
+                  # which the binary format does not emit. dist/ is runner-owned
+                  # (native goreleaser-action), so no sudo.
                   cp LICENCE.md README.md dist/
                   ls -la dist/
 
@@ -261,6 +282,11 @@ jobs:
         steps:
             - name: Checkout code
               uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+              with:
+                  # GoReleaser + the pgedge action clones use tokens from env /
+                  # explicit URLs, never the git remote, so don't persist the
+                  # workflow token into .git/config where later steps could read it.
+                  persist-credentials: false
 
             - name: Derive os_version from image
               id: cell
@@ -347,6 +373,11 @@ jobs:
         steps:
             - name: Checkout code
               uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+              with:
+                  # GoReleaser + the pgedge action clones use tokens from env /
+                  # explicit URLs, never the git remote, so don't persist the
+                  # workflow token into .git/config where later steps could read it.
+                  persist-credentials: false
 
             - name: Download all RPM cell artifacts
               uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -460,6 +491,11 @@ jobs:
         steps:
             - name: Checkout code
               uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+              with:
+                  # GoReleaser + the pgedge action clones use tokens from env /
+                  # explicit URLs, never the git remote, so don't persist the
+                  # workflow token into .git/config where later steps could read it.
+                  persist-credentials: false
 
             - name: Derive distro from image
               id: cell
@@ -541,6 +577,11 @@ jobs:
         steps:
             - name: Checkout code
               uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+              with:
+                  # GoReleaser + the pgedge action clones use tokens from env /
+                  # explicit URLs, never the git remote, so don't persist the
+                  # workflow token into .git/config where later steps could read it.
+                  persist-credentials: false
 
             - name: Download all DEB cell artifacts
               uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8

@@ -22,6 +22,9 @@ test-system/
 *.test
 *.out
 
+# GoReleaser output
+dist/
+
 # IDE
 .vscode/
 .idea/

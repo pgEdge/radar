@@ -207,13 +207,14 @@ sign_rpms() {
       continue
     fi
 
-    # Sign the RPM using rpmsign, using passphrase if provided
-    rpmsign --define "_gpg_name $KEY_ID" --addsign "$file" >/dev/null 2>&1
-
-    if [ $? -eq 0 ]; then
+    # Sign the RPM using rpmsign. Under `set -euo pipefail` a bare failing
+    # rpmsign aborts before a `$?` check could run, so test it inline and fail
+    # hard on error — never ship an unsigned RPM, but still log which file.
+    if rpmsign --define "_gpg_name $KEY_ID" --addsign "$file" >/dev/null 2>&1; then
       echo "Successfully signed '$file'."
     else
       echo "Error: Failed to sign '$file'."
+      exit 1
     fi
   done
   echo "=======================Signing Completes=================="

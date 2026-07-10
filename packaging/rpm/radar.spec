@@ -21,6 +21,11 @@ directly into a timestamped ZIP file without requiring agents or background
 processes.
 
 %prep
+# Stage the radar binary (Source0) into the build dir alongside the docs so the
+# SBOM below scans the actual Go binary (syft's go-module-binary cataloger),
+# not just LICENCE/README. The install section still installs the binary from
+# Source0 directly, so this copy only feeds the syft scan.
+cp %{SOURCE0} %{_builddir}/radar
 cp %{SOURCE1} %{_builddir}/
 cp %{SOURCE2} %{_builddir}/
 
