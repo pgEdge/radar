@@ -1,0 +1,77 @@
+# GoReleaser configuration for radar
+# https://goreleaser.com/customization/
+#
+# radar is distributed as a raw, statically-linked binary named
+# radar-<os>-<arch> (e.g. radar-linux-amd64). The native RPM/DEB packaging
+# (see packaging/) consumes that binary directly as its Source0, so the
+# archive format is `binary` (no tarball wrapper) and the name_template
+# matches the historical asset contract.
+
+version: 2
+
+before:
+  hooks:
+    # radar's test suite needs a live PostgreSQL, so it is NOT run here; only
+    # ensure module dependencies are present before the release build.
+    - go mod download
+
+builds:
+  - id: radar
+    main: .
+    binary: radar
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+
+archives:
+  - id: radar
+    # Emit the bare binary (no tar/zip wrapper) named radar-<os>-<arch>.
+    formats:
+      - binary
+    name_template: "radar-{{ .Os }}-{{ .Arch }}"
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - typo
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: 'Bug Fixes'
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: Others
+      order: 999
+
+release:
+  github:
+    owner: pgedge
+    name: radar
+  draft: false
+  prerelease: auto
+  mode: append
+  header: |
+    ## radar {{.Version}}
+
+    Binary downloads are available for multiple platforms below.
+  footer: |
+    **Full Changelog**: https://github.com/pgEdge/radar/compare/{{ .PreviousTag }}...{{ .Tag }}
