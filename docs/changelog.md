@@ -7,6 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-08-06
+
+### Security
+- Go toolchain updated to 1.25.12 (1.24 is end-of-life) - fixes `crypto/tls`, `crypto/x509`, `net`, `net/url` and `os` vulnerabilities
+- `github.com/jackc/pgx/v5` updated to v5.10.0 - fixes a SQL injection issue
+- `golang.org/x/text` updated to v0.40.0 - fixes an infinite loop in `norm.Iter`
+
 ## [0.5.0] - 2026-05-08
 
 ### Added
