@@ -25,6 +25,9 @@ test-system/
 # GoReleaser output
 dist/
 
+# Pinned CI tooling downloaded by run-ci-local.sh
+.ci-tools/
+
 # IDE
 .vscode/
 .idea/
