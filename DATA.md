@@ -231,6 +231,10 @@ Instance-level PostgreSQL collectors. Files stored in `postgresql/`.
 | `postgresql/checkpointer.tsv` | `pg_stat_checkpointer` | Checkpointer statistics |
 | `postgresql/configuration.tsv` | `pg_settings` | Configuration parameters |
 | `postgresql/connection_summary.tsv` | `pg_stat_activity` | Connection count by state and wait event |
+| `postgresql/control_checkpoint.tsv` | `pg_control_checkpoint()` | Latest checkpoint: LSNs, timeline, next and oldest XIDs and multixacts |
+| `postgresql/control_init.tsv` | `pg_control_init()` | Cluster initialisation constants: block and WAL segment size, whether data checksums are enabled |
+| `postgresql/control_recovery.tsv` | `pg_control_recovery()` | Recovery state: minimum recovery end point, backup start and end LSNs |
+| `postgresql/control_system.tsv` | `pg_control_system()` | System identifier, control and catalog version numbers |
 | `postgresql/database_conflicts.tsv` | `pg_stat_database_conflicts` | Recovery conflict statistics |
 | `postgresql/database_sizes.tsv` | `pg_database_size()` | Database disk usage |
 | `postgresql/databases.tsv` | `pg_database` | Database list |

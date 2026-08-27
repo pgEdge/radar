@@ -96,6 +96,32 @@ WHERE NOT blocked_locks.granted`,
 		Query:       "SELECT state, wait_event_type, count(*) FROM pg_stat_activity GROUP BY state, wait_event_type ORDER BY count(*) DESC",
 	},
 	{
+		// pg_controldata's content, read through the catalogue functions rather
+		// than by shelling out to the binary, which needs the data directory
+		// and a matching binary version on PATH. Readable by pg_monitor.
+		Name:        "control_checkpoint",
+		ArchivePath: "postgresql/control_checkpoint.tsv",
+		Query:       "SELECT * FROM pg_control_checkpoint()",
+	},
+	{
+		// Carries data_page_checksum_version, the only place in the archive
+		// that says whether checksums are enabled at all;
+		// databases_checksums.tsv reports failure counts, not the setting.
+		Name:        "control_init",
+		ArchivePath: "postgresql/control_init.tsv",
+		Query:       "SELECT * FROM pg_control_init()",
+	},
+	{
+		Name:        "control_recovery",
+		ArchivePath: "postgresql/control_recovery.tsv",
+		Query:       "SELECT * FROM pg_control_recovery()",
+	},
+	{
+		Name:        "control_system",
+		ArchivePath: "postgresql/control_system.tsv",
+		Query:       "SELECT * FROM pg_control_system()",
+	},
+	{
 		Name:        "database_conflicts",
 		ArchivePath: "postgresql/database_conflicts.tsv",
 		Query:       "SELECT * FROM pg_stat_database_conflicts ORDER BY datname",
