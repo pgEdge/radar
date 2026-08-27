@@ -104,9 +104,9 @@ WHERE NOT blocked_locks.granted`,
 		Query:       "SELECT * FROM pg_control_checkpoint()",
 	},
 	{
-		// Carries data_page_checksum_version, the only place in the archive
-		// that says whether checksums are enabled at all;
-		// databases_checksums.tsv reports failure counts, not the setting.
+		// Carries data_page_checksum_version, which is the only place in the
+		// archive saying whether checksums are enabled, because
+		// databases_checksums.tsv reports failure counts rather than the setting.
 		Name:        "control_init",
 		ArchivePath: "postgresql/control_init.tsv",
 		Query:       "SELECT * FROM pg_control_init()",
@@ -300,9 +300,9 @@ ORDER BY s.pid`,
 		Query:       "SELECT userid, dbid, query, calls, total_exec_time, mean_exec_time, max_exec_time, rows FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 100",
 	},
 	{
-		// SELECT * rather than a column list: the confl_* counters arrived
-		// after apply_error_count and sync_error_count, and more conflict
-		// kinds are added between major versions.
+		// SELECT * rather than a column list, because the confl_* counters
+		// differ between major versions and a fixed list would break on any
+		// version lacking one of them.
 		Name:        "stat_subscription_stats",
 		ArchivePath: "postgresql/stat_subscription_stats.tsv",
 		Query:       "SELECT * FROM pg_stat_subscription_stats ORDER BY subname",
@@ -620,11 +620,11 @@ WHERE datname = current_database()`,
 			            THEN toast.relpages::bigint * current_setting('block_size')::bigint
 			            ELSE pg_relation_size(c.reltoastrelid)
 			       END AS toast_size,
-			       -- The CASE guards are required, not cosmetic: a partitioned
-			       -- table carries relfrozenxid = 0, and age('0'::xid) returns a
-			       -- huge number that reads as an imminent wraparound. Note the
-			       -- two different functions: age() for transaction IDs,
-			       -- mxid_age() for multixacts.
+			       -- A partitioned table carries relfrozenxid = 0, and
+			       -- age('0'::xid) returns a huge number that reads as an
+			       -- imminent wraparound, so the CASE guards leave those rows
+			       -- empty. Transaction-ID age uses age() and multixact age
+			       -- uses mxid_age().
 			       CASE WHEN c.relfrozenxid <> '0'::xid THEN age(c.relfrozenxid) END
 			           AS relfrozenxid_age,
 			       CASE WHEN c.relminmxid <> '0'::xid THEN mxid_age(c.relminmxid) END
@@ -788,8 +788,9 @@ LIMIT 1000`,
 		Query:       "SELECT * FROM spock.local_sync_status ORDER BY sync_subid, sync_nspname, sync_relname",
 	},
 	{
-		// info is excluded deliberately: it is jsonb set at node creation, so
-		// what it holds depends on the deployment rather than on Spock.
+		// info is excluded deliberately: it is an operator-supplied jsonb
+		// argument to spock.node_create, defaulting to NULL, so what it holds
+		// depends on the deployment rather than on Spock.
 		Name:        "spock_node",
 		ArchivePath: "spock/%s/node.tsv",
 		Query:       "SELECT node_id, node_name, location, country FROM spock.node ORDER BY node_name",

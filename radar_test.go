@@ -550,54 +550,55 @@ func TestPerDatabaseTasksStructure(t *testing.T) {
 	}
 }
 
-// TestQueryTaskColumnsCoverage asserts that the queries we expanded continue
-// to reference the column tokens we rely on. Catches accidental column
-// removal during future edits to these query strings.
-func TestQueryTaskColumnsCoverage(t *testing.T) {
-	checks := []struct {
-		taskList    string
-		taskName    string
-		mustContain []string
-	}{
-		{"postgres", "databases", []string{
-			"datfrozenxid", "datminmxid", "datconnlimit",
-			"datistemplate", "datallowconn",
-		}},
-		{"perDB", "tables", []string{
-			"n_live_tup", "n_dead_tup", "last_autovacuum", "last_analyze",
-			"reltuples", "reloptions", "reltoastrelid", "relpersistence",
-			"relpages", "pg_relation_size", "pg_table_size", "LIMIT 1000",
-			"many_tables", "current_setting('block_size')",
-			"last_vacuum_age_seconds", "last_autovacuum_age_seconds",
-			"last_analyze_age_seconds", "last_autoanalyze_age_seconds",
-			// Freeze age, with the guards that keep a partitioned table's
-			// relfrozenxid = 0 from reading as an imminent wraparound.
-			"relfrozenxid_age", "relminmxid_age",
-			"age(c.relfrozenxid)", "mxid_age(c.relminmxid)",
-			"c.relfrozenxid <> '0'::xid", "c.relminmxid <> '0'::xid",
-		}},
-		{"perDB", "indexes", []string{
-			"indrelid", "indclass", "indkey", "indisvalid",
-			"idx_scan", "pg_relation_size", "LIMIT 1000",
-			"many_indexes", "current_setting('block_size')",
-		}},
-		{"perDB", "sequences", []string{
-			"pg_sequences", "last_value", "max_value", "min_value", "increment_by",
-		}},
-		{"postgres", "stat_ssl", []string{
-			"pg_stat_ssl", "ssl", "cipher",
-		}},
-		{"postgres", "stat_replication_slots", []string{
-			"pg_stat_replication_slots",
-		}},
-		{"perDB", "bloat", []string{
-			"table_bloat_ratio", "wastedbytes",
-		}},
-		{"perDB", "pgstattuple", []string{
-			"pgstattuple_approx",
-		}},
-	}
+// queryColumnChecks lists the column tokens each expanded query must keep
+// referencing, so an accidental column removal is caught.
+var queryColumnChecks = []struct {
+	taskList    string
+	taskName    string
+	mustContain []string
+}{
+	{"postgres", "databases", []string{
+		"datfrozenxid", "datminmxid", "datconnlimit",
+		"datistemplate", "datallowconn",
+	}},
+	{"perDB", "tables", []string{
+		"n_live_tup", "n_dead_tup", "last_autovacuum", "last_analyze",
+		"reltuples", "reloptions", "reltoastrelid", "relpersistence",
+		"relpages", "pg_relation_size", "pg_table_size", "LIMIT 1000",
+		"many_tables", "current_setting('block_size')",
+		"last_vacuum_age_seconds", "last_autovacuum_age_seconds",
+		"last_analyze_age_seconds", "last_autoanalyze_age_seconds",
+		// Freeze age, with the guards that keep a partitioned table's
+		// relfrozenxid = 0 from reading as an imminent wraparound.
+		"relfrozenxid_age", "relminmxid_age",
+		"age(c.relfrozenxid)", "mxid_age(c.relminmxid)",
+		"c.relfrozenxid <> '0'::xid", "c.relminmxid <> '0'::xid",
+	}},
+	{"perDB", "indexes", []string{
+		"indrelid", "indclass", "indkey", "indisvalid",
+		"idx_scan", "pg_relation_size", "LIMIT 1000",
+		"many_indexes", "current_setting('block_size')",
+	}},
+	{"perDB", "sequences", []string{
+		"pg_sequences", "last_value", "max_value", "min_value", "increment_by",
+	}},
+	{"postgres", "stat_ssl", []string{
+		"pg_stat_ssl", "ssl", "cipher",
+	}},
+	{"postgres", "stat_replication_slots", []string{
+		"pg_stat_replication_slots",
+	}},
+	{"perDB", "bloat", []string{
+		"table_bloat_ratio", "wastedbytes",
+	}},
+	{"perDB", "pgstattuple", []string{
+		"pgstattuple_approx",
+	}},
+}
 
+// TestQueryTaskColumnsCoverage asserts that the queries we expanded continue to
+// reference the column tokens we rely on.
+func TestQueryTaskColumnsCoverage(t *testing.T) {
 	taskByName := func(list []SimpleQueryTask, name string) *SimpleQueryTask {
 		for i := range list {
 			if list[i].Name == name {
@@ -607,7 +608,7 @@ func TestQueryTaskColumnsCoverage(t *testing.T) {
 		return nil
 	}
 
-	for _, c := range checks {
+	for _, c := range queryColumnChecks {
 		var task *SimpleQueryTask
 		switch c.taskList {
 		case "postgres":
@@ -712,7 +713,7 @@ func TestSpockCollectorsRegistered(t *testing.T) {
 	}
 }
 
-// TestSpockTasksStructure verifies all Spock tasks have required fields
+// TestSpockTasksStructure verifies all Spock tasks have required fields.
 func TestSpockTasksStructure(t *testing.T) {
 	for i, task := range spockQueryTasks {
 		if task.Name == "" {
@@ -800,11 +801,14 @@ func TestGenerateDatabaseTasksRegistersAllRegistries(t *testing.T) {
 		paths[task.Name] = task.ArchivePath
 	}
 
-	// One representative per registry: per-database, pg_statviz, Spock.
+	// One representative per registry: per-database, pg_statviz, Spock. The
+	// template databases must contribute nothing, so their entries expect "".
 	expected := map[string]string{
 		"mydb/tables":              "databases/mydb/tables.tsv",
 		"mydb/pg_statviz_blocking": "pg_statviz/mydb/blocking.tsv",
 		"mydb/spock_lag_tracker":   "spock/mydb/lag_tracker.tsv",
+		"template0/tables":         "",
+		"template1/tables":         "",
 	}
 	for name, want := range expected {
 		if paths[name] != want {
@@ -815,12 +819,6 @@ func TestGenerateDatabaseTasksRegistersAllRegistries(t *testing.T) {
 	wantCount := len(perDatabaseQueryTasks) + len(pgStatvizQueryTasks) + len(spockQueryTasks)
 	if len(tasks) != wantCount {
 		t.Errorf("got %d tasks for one database, want %d", len(tasks), wantCount)
-	}
-
-	for name := range paths {
-		if strings.HasPrefix(name, "template0/") || strings.HasPrefix(name, "template1/") {
-			t.Errorf("template database was not skipped: task %q", name)
-		}
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {

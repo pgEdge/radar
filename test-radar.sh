@@ -75,9 +75,9 @@ PGBINI
 cat > /etc/pgbouncer/userlist.txt << 'PGBUSERS'
 "pooler" "SCRAM-SHA-256$4096:userlist-secret-value"
 PGBUSERS
-# The redaction is what protects pgbouncer.ini, not the file mode, so make it
-# world-readable and let every scenario exercise the filter. userlist.txt stays
-# root-only: radar records that it is there and never reads it.
+# pgbouncer.ini is world-readable here so that every scenario exercises the
+# redaction filter, which is what protects it. userlist.txt stays root-only:
+# radar records that it is there and never reads its contents.
 chmod 0644 /etc/pgbouncer/pgbouncer.ini
 chmod 0600 /etc/pgbouncer/userlist.txt
 

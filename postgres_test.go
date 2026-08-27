@@ -208,16 +208,45 @@ func TestPGQueryCollectorUnavailableAsSkip(t *testing.T) {
 	}
 }
 
+// writeFixture creates a file holding contents, failing the test if it cannot.
+func writeFixture(t *testing.T, path, contents string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatalf("writing fixture %s: %v", path, err)
+	}
+}
+
+// makeLogDir builds a data directory with a log subdirectory holding one log
+// file, and returns both paths.
+func makeLogDir(t *testing.T, contents string) (dataDir, logDir string) {
+	t.Helper()
+	dataDir = t.TempDir()
+	logDir = filepath.Join(dataDir, "log")
+	if err := os.Mkdir(logDir, 0o700); err != nil {
+		t.Fatalf("creating fixture log directory: %v", err)
+	}
+	writeFixture(t, filepath.Join(logDir, "postgresql.log"), contents)
+	return dataDir, logDir
+}
+
+// assertListsLogFile checks that a listing resolved to dir and names the log
+// file inside it.
+func assertListsLogFile(t *testing.T, listing, dir string) {
+	t.Helper()
+	if !strings.Contains(listing, "postgresql.log") {
+		t.Errorf("listing does not name the log file: %q", listing)
+	}
+	if !strings.Contains(listing, dir) {
+		t.Errorf("listing does not resolve to %q: %q", dir, listing)
+	}
+}
+
 // TestWriteDirListingTSV verifies the directory listing shape: a header, one row
 // per regular file with its size, and no rows for subdirectories.
 func TestWriteDirListingTSV(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "a.log"), []byte("hello"), 0o600); err != nil {
-		t.Fatalf("writing fixture: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "b.log"), []byte("hi"), 0o600); err != nil {
-		t.Fatalf("writing fixture: %v", err)
-	}
+	writeFixture(t, filepath.Join(dir, "a.log"), "hello")
+	writeFixture(t, filepath.Join(dir, "b.log"), "hi")
 	if err := os.Mkdir(filepath.Join(dir, "sub"), 0o700); err != nil {
 		t.Fatalf("creating fixture subdirectory: %v", err)
 	}
@@ -227,39 +256,42 @@ func TestWriteDirListingTSV(t *testing.T) {
 		t.Fatalf("writeDirListingTSV: %v", err)
 	}
 
+	// Each row is compared without its trailing timestamp, which varies.
+	want := []string{
+		"directory\tfilename\tsize_bytes\tmodified",
+		dir + "\ta.log\t5",
+		dir + "\tb.log\t2",
+	}
 	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
-	if lines[0] != "directory\tfilename\tsize_bytes\tmodified" {
-		t.Errorf("header = %q", lines[0])
+	if len(lines) != len(want) {
+		t.Fatalf("got %d lines, want %d (header plus two files): %q", len(lines), len(want), lines)
 	}
-	if len(lines) != 3 {
-		t.Fatalf("got %d lines, want 3 (header plus two files): %q", len(lines), lines)
+	if lines[0] != want[0] {
+		t.Errorf("header = %q, want %q", lines[0], want[0])
 	}
-
-	for i, want := range []struct {
-		name string
-		size string
-	}{{"a.log", "5"}, {"b.log", "2"}} {
-		fields := strings.Split(lines[i+1], "\t")
-		if len(fields) != 4 {
-			t.Fatalf("row %d has %d fields, want 4: %q", i, len(fields), lines[i+1])
+	for i, line := range lines[1:] {
+		row, modified, _ := cutLastField(line)
+		if row != want[i+1] {
+			t.Errorf("row %d = %q, want %q", i, row, want[i+1])
 		}
-		if fields[0] != dir {
-			t.Errorf("row %d directory = %q, want %q", i, fields[0], dir)
-		}
-		if fields[1] != want.name {
-			t.Errorf("row %d filename = %q, want %q", i, fields[1], want.name)
-		}
-		if fields[2] != want.size {
-			t.Errorf("row %d size_bytes = %q, want %q", i, fields[2], want.size)
-		}
-		if _, err := time.Parse(time.RFC3339, fields[3]); err != nil {
-			t.Errorf("row %d modified = %q is not RFC3339: %v", i, fields[3], err)
+		if _, err := time.Parse(time.RFC3339, modified); err != nil {
+			t.Errorf("row %d modified = %q is not RFC3339: %v", i, modified, err)
 		}
 	}
 
 	if strings.Contains(buf.String(), "sub") {
 		t.Error("listing includes the subdirectory")
 	}
+}
+
+// cutLastField splits a TSV row into everything before its final tab and the
+// final field.
+func cutLastField(row string) (head, last string, found bool) {
+	i := strings.LastIndex(row, "\t")
+	if i < 0 {
+		return row, "", false
+	}
+	return row[:i], row[i+1:], true
 }
 
 // TestWriteDirListingTSVUnreadableIsSkip verifies that a directory radar cannot
@@ -281,14 +313,7 @@ func TestWriteDirListingTSVUnreadableIsSkip(t *testing.T) {
 // TestCollectLogDirectory verifies that log_directory is resolved against the
 // data directory when relative, and used as given when absolute.
 func TestCollectLogDirectory(t *testing.T) {
-	dataDir := t.TempDir()
-	logDir := filepath.Join(dataDir, "log")
-	if err := os.Mkdir(logDir, 0o700); err != nil {
-		t.Fatalf("creating fixture log directory: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(logDir, "postgresql.log"), []byte("x"), 0o600); err != nil {
-		t.Fatalf("writing fixture: %v", err)
-	}
+	dataDir, logDir := makeLogDir(t, "x")
 
 	tests := []struct {
 		name    string
@@ -323,12 +348,7 @@ func TestCollectLogDirectory(t *testing.T) {
 				t.Fatalf("collectLogDirectory: %v", err)
 			}
 
-			if !strings.Contains(buf.String(), "postgresql.log") {
-				t.Errorf("listing does not mention the log file: %q", buf.String())
-			}
-			if !strings.Contains(buf.String(), logDir) {
-				t.Errorf("listing does not resolve to %q: %q", logDir, buf.String())
-			}
+			assertListsLogFile(t, buf.String(), logDir)
 			if err := mock.ExpectationsWereMet(); err != nil {
 				t.Errorf("unmet sqlmock expectations: %v", err)
 			}
@@ -340,15 +360,8 @@ func TestCollectLogDirectory(t *testing.T) {
 // names and sizes only. Log bodies are far larger than anything else in an
 // archive and carry query text and error detail beyond what the rest holds.
 func TestCollectLogDirectoryNeverReadsContents(t *testing.T) {
-	dataDir := t.TempDir()
-	logDir := filepath.Join(dataDir, "log")
-	if err := os.Mkdir(logDir, 0o700); err != nil {
-		t.Fatalf("creating fixture log directory: %v", err)
-	}
 	const secret = "FATAL: password authentication failed for user hunter2"
-	if err := os.WriteFile(filepath.Join(logDir, "postgresql.log"), []byte(secret), 0o600); err != nil {
-		t.Fatalf("writing fixture: %v", err)
-	}
+	_, logDir := makeLogDir(t, secret)
 
 	db, mock, err := sqlmock.New()
 	if err != nil {
