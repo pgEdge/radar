@@ -84,7 +84,33 @@ func getPostgreSQLTasks(db *sql.DB) []CollectionTask {
 	// Build config file tasks
 	tasks = append(tasks, buildConfigFileTasks("postgresql", postgresConfigFileTasks, db)...)
 
+	// The log directory listing needs a query and a directory walk, so it does
+	// not fit either registry.
+	tasks = append(tasks, CollectionTask{
+		Category:    "postgresql",
+		Name:        "log_directory",
+		ArchivePath: "postgresql/log_directory.tsv",
+		Collector: func(cfg *Config, w io.Writer) error {
+			return collectLogDirectory(db, cfg, w)
+		},
+	})
+
 	return tasks
+}
+
+// pgDataDir returns the data directory, using the configured value when one was
+// given and asking the server otherwise. The answer is cached on cfg.
+func pgDataDir(db *sql.DB, cfg *Config) (string, error) {
+	if cfg.DataDir != "" {
+		return cfg.DataDir, nil
+	}
+
+	var dataDir string
+	if err := db.QueryRow("SHOW data_directory").Scan(&dataDir); err != nil {
+		return "", fmt.Errorf("detecting data directory: %w", err)
+	}
+	cfg.DataDir = dataDir
+	return dataDir, nil
 }
 
 // collectPGConfigFile reads a PostgreSQL config file
@@ -93,23 +119,51 @@ func collectPGConfigFile(db *sql.DB, cfg *Config, filename string, w io.Writer) 
 		return fmt.Errorf("PostgreSQL not initialized")
 	}
 
-	// Auto-detect data directory if not provided
-	if cfg.DataDir == "" {
-		var dataDir string
-		err := db.QueryRow("SHOW data_directory").Scan(&dataDir)
-		if err != nil {
-			return fmt.Errorf("detecting data directory: %w", err)
-		}
-		cfg.DataDir = dataDir
+	dataDir, err := pgDataDir(db, cfg)
+	if err != nil {
+		return err
 	}
 
-	path := filepath.Join(cfg.DataDir, filename)
+	path := filepath.Join(dataDir, filename)
 	data, err := readFile(path)
 	if err != nil {
 		return err
 	}
 	_, err = w.Write(data)
 	return err
+}
+
+// collectLogDirectory lists the server log directory, connecting the logging
+// settings in postgresql.conf to how much disk the logs have actually taken.
+// Names and sizes only, never contents: log bodies are far larger than anything
+// else in the archive and carry query text and error detail well beyond what the
+// rest of it holds.
+func collectLogDirectory(db *sql.DB, cfg *Config, w io.Writer) error {
+	if db == nil {
+		return fmt.Errorf("PostgreSQL not initialized")
+	}
+
+	// log_directory is superuser-only, so pg_settings shows it as empty to a
+	// role without pg_read_all_settings. Such a role gets 42501 here, which is
+	// a skip.
+	var logDir string
+	if err := db.QueryRow("SHOW log_directory").Scan(&logDir); err != nil {
+		if isPGUnavailableError(err) {
+			return NewSkipError(err.Error())
+		}
+		return fmt.Errorf("reading log_directory: %w", err)
+	}
+
+	// The setting may be absolute or relative to the data directory.
+	if !filepath.IsAbs(logDir) {
+		dataDir, err := pgDataDir(db, cfg)
+		if err != nil {
+			return err
+		}
+		logDir = filepath.Join(dataDir, logDir)
+	}
+
+	return writeDirListingTSV(logDir, w)
 }
 
 // generateDatabaseTasks creates per-database collection tasks

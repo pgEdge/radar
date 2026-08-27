@@ -25,6 +25,10 @@ chown -R postgres:postgres /var/lib/postgresql
 su - postgres -c "/usr/lib/postgresql/18/bin/initdb -D /var/lib/postgresql/18/main"
 
 echo ""
+echo "Enabling the logging collector, so log_directory exists to be listed..."
+su - postgres -c "echo 'logging_collector = on' >> /var/lib/postgresql/18/main/postgresql.conf"
+
+echo ""
 echo "Starting PostgreSQL 18..."
 su - postgres -c "/usr/lib/postgresql/18/bin/pg_ctl -D /var/lib/postgresql/18/main -l /var/lib/postgresql/18/logfile start"
 
@@ -51,6 +55,49 @@ echo "Creating non-root system user..."
 useradd -m -s /bin/bash radaruser || true
 cp radar /home/radaruser/
 chown radaruser:radaruser /home/radaruser/radar
+
+# Verifies the log directory listing. It carries names, sizes and timestamps
+# only, never log contents. $PGDATA is mode 0700 and owned by postgres, so the
+# root scenarios can list it and the non-root ones must skip it cleanly.
+validate_log_directory() {
+	local zip_file="$1"
+	local scenario="$2"
+	local can_read="$3"  # "yes" or "no"
+
+	local listing
+	listing=$(unzip -p "$zip_file" "postgresql/log_directory.tsv" 2>/dev/null || true)
+
+	if [ "$can_read" = "no" ]; then
+		if [ -n "$listing" ]; then
+			echo -e "${RED}✗ $scenario FAILED: log directory listed despite no rights on the path${NC}"
+			return 1
+		fi
+		return 0
+	fi
+
+	if [ -z "$listing" ]; then
+		echo -e "${RED}✗ $scenario FAILED: postgresql/log_directory.tsv missing${NC}"
+		return 1
+	fi
+
+	if ! echo "$listing" | head -1 | grep -q "^directory.filename.size_bytes.modified$"; then
+		echo -e "${RED}✗ $scenario FAILED: unexpected log_directory.tsv header${NC}"
+		return 1
+	fi
+
+	if ! echo "$listing" | tail -n +2 | grep -q "\.log"; then
+		echo -e "${RED}✗ $scenario FAILED: log_directory.tsv lists no log file${NC}"
+		return 1
+	fi
+
+	# Names only: nothing from a log body may appear.
+	if echo "$listing" | grep -qE "LOG:|FATAL:|database system is ready"; then
+		echo -e "${RED}✗ $scenario FAILED: log_directory.tsv contains log file contents${NC}"
+		return 1
+	fi
+
+	return 0
+}
 
 # Verifies the per-table freeze-age columns in tables.tsv. A partitioned table
 # carries relfrozenxid = 0, and age('0'::xid) returns a huge meaningless number
@@ -132,6 +179,12 @@ validate_zip() {
 	fi
 
 	if ! validate_freeze_age "$zip_file" "$scenario"; then
+		return 1
+	fi
+
+	# require_system is "yes" for the scenarios running as root, which are the
+	# same ones that can traverse $PGDATA to reach the log directory.
+	if ! validate_log_directory "$zip_file" "$scenario" "$require_system"; then
 		return 1
 	fi
 

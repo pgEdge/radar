@@ -672,6 +672,38 @@ func readFile(path string) ([]byte, error) {
 	return data, nil
 }
 
+// writeDirListingTSV writes a TSV listing of the regular files in dir: one row
+// per file with its size and modification time. File contents are never read.
+// A directory that is absent or unreadable is a skip, which is the normal case
+// when radar runs as an OS user without rights on the path.
+func writeDirListingTSV(dir string, w io.Writer) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return NewSkipError(fmt.Sprintf("cannot list %s: %v", dir, err))
+	}
+
+	if _, err := io.WriteString(w, "directory\tfilename\tsize_bytes\tmodified\n"); err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			// The file went away between the listing and the stat.
+			continue
+		}
+		if _, err := fmt.Fprintf(w, "%s\t%s\t%d\t%s\n",
+			dir, entry.Name(), info.Size(), info.ModTime().Format(time.RFC3339)); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // closeErrCheck safely closes a resource and logs any error
 func closeErrCheck(closer io.Closer, resourceName string) {
 	if err := closer.Close(); err != nil {

@@ -245,6 +245,7 @@ Instance-level PostgreSQL collectors. Files stored in `postgresql/`.
 | `postgresql/db_role_setting.tsv` | `pg_db_role_setting` | Per-database/role settings |
 | `postgresql/file_settings.tsv` | `pg_file_settings` | Config file parse results and errors |
 | `postgresql/pg_hba.conf` | Data directory | Host-based authentication config |
+| `postgresql/log_directory.tsv` | `log_directory` + filesystem | Listing of the server log directory: name, size and modification time per file. Names only, never log contents. Skipped when radar has no rights on the path |
 | `postgresql/pg_hba_file_rules.tsv` | `pg_hba_file_rules` | Parsed pg_hba.conf rules (PG10+) |
 | `postgresql/pg_ident.conf` | Data directory | User name mapping config |
 | `postgresql/postgresql.auto.conf` | Data directory | Auto-generated configuration |

@@ -196,6 +196,7 @@ For a complete reference of all collected data, see [docs/data.md](docs/data.md)
 - **Progress tracking**: `pg_stat_progress_analyze`, `pg_stat_progress_basebackup`, `pg_stat_progress_cluster`, `pg_stat_progress_copy`, `pg_stat_progress_create_index`, `pg_stat_progress_vacuum`
 - **Catalog**: `pg_available_extension_versions`, `pg_database` (incl. `datfrozenxid`/`datminmxid` wraparound headroom and `datconnlimit`), `pg_database_size()`, `pg_roles`, `pg_tablespace_size()`, `version()`
 - **Control file**: `pg_control_checkpoint()`, `pg_control_init()`, `pg_control_recovery()`, `pg_control_system()` (the `pg_controldata` content, read as SQL)
+- **Log directory**: listing of `log_directory` resolved against the data directory, with per-file name, size and modification time. Names only, never log contents
 
 **Per-Database**
 
