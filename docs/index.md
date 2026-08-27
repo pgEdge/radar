@@ -69,7 +69,7 @@ psql -c "GRANT pg_monitor TO radaruser;"
 PGPASSWORD='secure_password' ./radar -d mydatabase -U radaruser
 ```
 
-Note: The pg_monitor role collects 68 of 71 collectors. Missing data includes some replication catalog views and `pg_hba_file_rules` (though the actual `pg_hba.conf` file is still collected via filesystem access).
+Note: a `pg_monitor` role reaches nearly everything, and anything it cannot read is skipped rather than failed, so the run still completes. Expect a few replication catalog views and `pg_hba_file_rules` to be missing, though `pg_hba.conf` itself is still collected from the filesystem.
 
 **Limited Permissions**: radar can run as a non-root user with limited PostgreSQL permissions. Some system collectors will be skipped, and some PostgreSQL catalog queries may fail gracefully.
 
