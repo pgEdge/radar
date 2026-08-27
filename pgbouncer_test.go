@@ -56,15 +56,14 @@ func TestFilterPgBouncerINI(t *testing.T) {
 	got := buf.String()
 
 	// No secret from any section may survive, including the commented-out one.
-	for _, secret := range []string{"s3cr3t", "another-s3cr3t", "retired-s3cr3t", "password="} {
-		if strings.Contains(got, secret) {
-			t.Errorf("filtered output contains %q:\n%s", secret, got)
-		}
-	}
+	assertAbsent(t, got, []string{"s3cr3t", "another-s3cr3t", "retired-s3cr3t", "password="})
 
 	// The [pgbouncer] section is what answers whether a pooler is deployed and
-	// how it is tuned, so its values must survive verbatim.
-	for _, want := range []string{
+	// how it is tuned, so its values must survive verbatim. Keys elsewhere
+	// survive too, along with every section header, so the reader can still see
+	// the shape of the configuration. An %include names a file radar does not
+	// follow, and keeping the line says more configuration exists.
+	assertPresent(t, got, []string{
 		"[pgbouncer]",
 		"listen_addr = 127.0.0.1",
 		"listen_port = 6432",
@@ -73,30 +72,34 @@ func TestFilterPgBouncerINI(t *testing.T) {
 		"pool_mode = transaction",
 		"max_client_conn = 500",
 		"default_pool_size = 20",
-	} {
-		if !strings.Contains(got, want) {
-			t.Errorf("filtered output lost %q:\n%s", want, got)
-		}
-	}
-
-	// Keys elsewhere survive so the reader can still see the shape of the
-	// configuration, and every section header is kept.
-	for _, want := range []string{"[databases]", "[peers]", "[users]", "mydb", "pooler"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("filtered output lost %q:\n%s", want, got)
-		}
-	}
-
-	// An %include names a file radar does not follow; keeping the line tells
-	// the reader that more configuration exists.
-	if !strings.Contains(got, "%include /etc/pgbouncer/extra.ini") {
-		t.Errorf("filtered output lost the %%include line:\n%s", got)
-	}
+		"[databases]", "[peers]", "[users]", "mydb", "pooler",
+		"%include /etc/pgbouncer/extra.ini",
+	})
 
 	// pool_mode appears in both [users] and [pgbouncer]. The [users] one must
 	// be redacted, so exactly one unredacted occurrence may remain.
 	if n := strings.Count(got, "pool_mode = transaction"); n != 1 {
 		t.Errorf("got %d unredacted pool_mode values, want 1:\n%s", n, got)
+	}
+}
+
+// assertAbsent fails the test for every item present in got.
+func assertAbsent(t *testing.T, got string, items []string) {
+	t.Helper()
+	for _, item := range items {
+		if strings.Contains(got, item) {
+			t.Errorf("filtered output contains %q:\n%s", item, got)
+		}
+	}
+}
+
+// assertPresent fails the test for every item missing from got.
+func assertPresent(t *testing.T, got string, items []string) {
+	t.Helper()
+	for _, item := range items {
+		if !strings.Contains(got, item) {
+			t.Errorf("filtered output lost %q:\n%s", item, got)
+		}
 	}
 }
 
@@ -172,4 +175,28 @@ func TestPgBouncerCollectorsRegistered(t *testing.T) {
 			t.Errorf("task %q archive path = %q, want %q", name, got[name], path)
 		}
 	}
+}
+
+// TestFilterPgBouncerINIRedactsCommentedOutSettings verifies that a commented-out
+// setting is redacted wherever it appears, including inside [pgbouncer]. A
+// commented-out connection string carries a password as readily as a live one,
+// and prose comments carry no value to redact, so they survive.
+func TestFilterPgBouncerINIRedactsCommentedOutSettings(t *testing.T) {
+	ini := `; PgBouncer configuration
+[pgbouncer]
+listen_port = 6432
+; password=comment-secret-value
+# olddb = host=db9.internal password=hash-secret-value
+`
+	var buf bytes.Buffer
+	if err := filterPgBouncerINI([]byte(ini), &buf); err != nil {
+		t.Fatalf("filterPgBouncerINI: %v", err)
+	}
+	got := buf.String()
+
+	assertAbsent(t, got, []string{"comment-secret-value", "hash-secret-value"})
+	assertPresent(t, got, []string{
+		"; PgBouncer configuration", // prose comment, nothing to redact
+		"listen_port = 6432",        // live [pgbouncer] setting still ships
+	})
 }

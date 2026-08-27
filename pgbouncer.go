@@ -88,12 +88,12 @@ func collectPgBouncerINI(w io.Writer) error {
 // that routinely contain password=, so their keys alone go into the archive:
 // enough to say which databases are pooled, without the credentials to reach
 // them. Every other section is treated the same way, so a section radar has not
-// vetted is not shipped verbatim just because it is new. Comments are redacted
-// alongside the keys, since a commented-out [databases] entry carries a password
-// as readily as a live one.
+// vetted is not shipped verbatim just because it is new.
 //
-// An %include line names a file radar does not follow, and is kept so the reader
-// knows further configuration exists.
+// A commented-out setting is redacted wherever it appears, [pgbouncer] included,
+// because a commented-out connection string carries a password as readily as a
+// live one. A prose comment has no value to redact and survives, as does an
+// %include line, which names a file radar does not follow.
 func filterPgBouncerINI(data []byte, w io.Writer) error {
 	shipValues := false
 
@@ -106,7 +106,7 @@ func filterPgBouncerINI(data []byte, w io.Writer) error {
 		case strings.HasPrefix(trimmed, "["):
 			name, _, closed := strings.Cut(strings.TrimPrefix(trimmed, "["), "]")
 			shipValues = closed && strings.EqualFold(strings.TrimSpace(name), "pgbouncer")
-		case !shipValues:
+		case !shipValues || isINIComment(trimmed):
 			if key, _, found := strings.Cut(line, "="); found {
 				line = key + "= " + redactedValue
 			}
@@ -118,6 +118,12 @@ func filterPgBouncerINI(data []byte, w io.Writer) error {
 	}
 
 	return scanner.Err()
+}
+
+// isINIComment reports whether a trimmed line is a PgBouncer configuration
+// comment, which starts with either ; or #.
+func isINIComment(trimmed string) bool {
+	return strings.HasPrefix(trimmed, ";") || strings.HasPrefix(trimmed, "#")
 }
 
 // collectPgBouncerFiles lists the PgBouncer configuration directory. This is how
