@@ -269,6 +269,7 @@ Instance-level PostgreSQL collectors. Files stored in `postgresql/`.
 | `postgresql/stat_statements_calls.tsv` | `pg_stat_statements` | Top 100 queries by call count |
 | `postgresql/stat_statements_max_time.tsv` | `pg_stat_statements` | Top 100 queries by max execution time |
 | `postgresql/stat_statements_total_time.tsv` | `pg_stat_statements` | Top 100 queries by total execution time |
+| `postgresql/stat_subscription_stats.tsv` | `pg_stat_subscription_stats` | Per-subscription apply and sync error counts, and per-kind conflict counters (PG15+) |
 | `postgresql/stat_wal.tsv` | `pg_stat_wal` | WAL statistics (PG14+) |
 | `postgresql/subscriptions.tsv` | `pg_subscription` | Logical replication subscriptions |
 | `postgresql/tablespace_sizes.tsv` | `pg_tablespace_size()` | Tablespace disk usage |

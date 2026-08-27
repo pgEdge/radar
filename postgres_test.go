@@ -75,6 +75,7 @@ func TestPostgreSQLCollectors(t *testing.T) {
 		{"stat_statements_calls", "postgresql/stat_statements_calls.tsv"},
 		{"stat_statements_max_time", "postgresql/stat_statements_max_time.tsv"},
 		{"stat_statements_total_time", "postgresql/stat_statements_total_time.tsv"},
+		{"stat_subscription_stats", "postgresql/stat_subscription_stats.tsv"},
 		{"stat_wal", "postgresql/stat_wal.tsv"},
 		{"subscriptions", "postgresql/subscriptions.tsv"},
 		{"tablespace_sizes", "postgresql/tablespace_sizes.tsv"},

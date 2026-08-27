@@ -274,6 +274,14 @@ ORDER BY s.pid`,
 		Query:       "SELECT userid, dbid, query, calls, total_exec_time, mean_exec_time, max_exec_time, rows FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 100",
 	},
 	{
+		// SELECT * rather than a column list: the confl_* counters arrived
+		// after apply_error_count and sync_error_count, and more conflict
+		// kinds are added between major versions.
+		Name:        "stat_subscription_stats",
+		ArchivePath: "postgresql/stat_subscription_stats.tsv",
+		Query:       "SELECT * FROM pg_stat_subscription_stats ORDER BY subname",
+	},
+	{
 		Name:        "stat_wal",
 		ArchivePath: "postgresql/stat_wal.tsv",
 		Query:       "SELECT * FROM pg_stat_wal",
