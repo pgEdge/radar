@@ -41,6 +41,8 @@ su - postgres -c "/usr/lib/postgresql/18/bin/createdb testdb"
 su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"CREATE USER testuser WITH PASSWORD 'testpass';\""
 su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"GRANT CONNECT ON DATABASE testdb TO testuser;\""
 su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"GRANT pg_monitor TO testuser;\""
+su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"CREATE TABLE part_parent (id int, ts date) PARTITION BY RANGE (ts);\""
+su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"CREATE TABLE part_child PARTITION OF part_parent FOR VALUES FROM ('2020-01-01') TO ('2030-01-01');\""
 su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"CREATE EXTENSION pg_statviz;\""
 su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"SELECT pgstatviz.snapshot();\""
 
@@ -49,6 +51,48 @@ echo "Creating non-root system user..."
 useradd -m -s /bin/bash radaruser || true
 cp radar /home/radaruser/
 chown radaruser:radaruser /home/radaruser/radar
+
+# Verifies the per-table freeze-age columns in tables.tsv. A partitioned table
+# carries relfrozenxid = 0, and age('0'::xid) returns a huge meaningless number
+# that reads as an imminent wraparound, so the partitioned parent must come back
+# empty while its partition reports a real age.
+validate_freeze_age() {
+	local zip_file="$1"
+	local scenario="$2"
+
+	if ! unzip -p "$zip_file" "databases/testdb/tables.tsv" | awk -F'\t' '
+		NR == 1 {
+			for (i = 1; i <= NF; i++) col[$i] = i
+			if (!("relfrozenxid_age" in col) || !("relminmxid_age" in col)) {
+				print "tables.tsv has no freeze-age columns" > "/dev/stderr"
+				exit 1
+			}
+			next
+		}
+		$col["tablename"] == "part_parent" {
+			parent = 1
+			if ($col["relfrozenxid_age"] != "" || $col["relminmxid_age"] != "") {
+				print "partitioned table part_parent reported a freeze age" > "/dev/stderr"
+				exit 1
+			}
+		}
+		$col["tablename"] == "part_child" {
+			child = 1
+			if ($col["relfrozenxid_age"] !~ /^[0-9]+$/ || $col["relminmxid_age"] !~ /^[0-9]+$/) {
+				print "partition part_child freeze age is not a number" > "/dev/stderr"
+				exit 1
+			}
+		}
+		END {
+			if (!parent) { print "part_parent row missing from tables.tsv" > "/dev/stderr"; exit 1 }
+			if (!child)  { print "part_child row missing from tables.tsv" > "/dev/stderr"; exit 1 }
+		}'; then
+		echo -e "${RED}✗ $scenario FAILED: per-table freeze age${NC}"
+		return 1
+	fi
+
+	return 0
+}
 
 # Helper function to validate ZIP contents
 validate_zip() {
@@ -84,6 +128,10 @@ validate_zip() {
 	# Must have pg_statviz data
 	if [ "$statviz_count" -eq 0 ]; then
 		echo -e "${RED}✗ $scenario FAILED: No pg_statviz data collected${NC}"
+		return 1
+	fi
+
+	if ! validate_freeze_age "$zip_file" "$scenario"; then
 		return 1
 	fi
 

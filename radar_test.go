@@ -570,6 +570,11 @@ func TestQueryTaskColumnsCoverage(t *testing.T) {
 			"many_tables", "current_setting('block_size')",
 			"last_vacuum_age_seconds", "last_autovacuum_age_seconds",
 			"last_analyze_age_seconds", "last_autoanalyze_age_seconds",
+			// Freeze age, with the guards that keep a partitioned table's
+			// relfrozenxid = 0 from reading as an imminent wraparound.
+			"relfrozenxid_age", "relminmxid_age",
+			"age(c.relfrozenxid)", "mxid_age(c.relminmxid)",
+			"c.relfrozenxid <> '0'::xid", "c.relminmxid <> '0'::xid",
 		}},
 		{"perDB", "indexes", []string{
 			"indrelid", "indclass", "indkey", "indisvalid",

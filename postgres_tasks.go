@@ -594,6 +594,15 @@ WHERE datname = current_database()`,
 			            THEN toast.relpages::bigint * current_setting('block_size')::bigint
 			            ELSE pg_relation_size(c.reltoastrelid)
 			       END AS toast_size,
+			       -- The CASE guards are required, not cosmetic: a partitioned
+			       -- table carries relfrozenxid = 0, and age('0'::xid) returns a
+			       -- huge number that reads as an imminent wraparound. Note the
+			       -- two different functions: age() for transaction IDs,
+			       -- mxid_age() for multixacts.
+			       CASE WHEN c.relfrozenxid <> '0'::xid THEN age(c.relfrozenxid) END
+			           AS relfrozenxid_age,
+			       CASE WHEN c.relminmxid <> '0'::xid THEN mxid_age(c.relminmxid) END
+			           AS relminmxid_age,
 			       s.n_live_tup,
 			       s.n_dead_tup,
 			       s.n_mod_since_analyze,
