@@ -759,9 +759,10 @@ var spockQueryTasks = []SimpleQueryTask{
 	{
 		// local_tup, remote_old_tup and remote_new_tup are excluded
 		// deliberately: they are jsonb images of the conflicting rows.
-		// error_message is kept even though a constraint violation quotes the
-		// offending key, because without it the log says only that something
-		// failed.
+		// error_message is kept: Spock stores the primary message with its
+		// SQLSTATE and no DETAIL, so a constraint violation's offending key is
+		// not included, and without the message the log says only that
+		// something failed.
 		Name:        "spock_exception_log",
 		ArchivePath: "spock/%s/exception_log.tsv",
 		Query: `SELECT remote_origin, remote_commit_ts, command_counter,
