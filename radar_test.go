@@ -673,6 +673,156 @@ func TestPgStatvizTasksStructure(t *testing.T) {
 	}
 }
 
+// TestSpockCollectorsRegistered pins the set of Spock catalogue relations radar
+// collects, and the archive path each one lands on.
+func TestSpockCollectorsRegistered(t *testing.T) {
+	expected := map[string]string{
+		"spock_channel_summary_stats": "spock/%s/channel_summary_stats.tsv",
+		"spock_exception_log":         "spock/%s/exception_log.tsv",
+		"spock_lag_tracker":           "spock/%s/lag_tracker.tsv",
+		"spock_local_node":            "spock/%s/local_node.tsv",
+		"spock_local_sync_status":     "spock/%s/local_sync_status.tsv",
+		"spock_node":                  "spock/%s/node.tsv",
+		"spock_pii":                   "spock/%s/pii.tsv",
+		"spock_progress":              "spock/%s/progress.tsv",
+		"spock_replication_set":       "spock/%s/replication_set.tsv",
+		"spock_replication_set_table": "spock/%s/replication_set_table.tsv",
+		"spock_resolutions":           "spock/%s/resolutions.tsv",
+		"spock_subscription":          "spock/%s/subscription.tsv",
+		"spock_tables":                "spock/%s/tables.tsv",
+	}
+
+	got := make(map[string]string, len(spockQueryTasks))
+	for _, task := range spockQueryTasks {
+		got[task.Name] = task.ArchivePath
+	}
+
+	for name, path := range expected {
+		if got[name] != path {
+			t.Errorf("Spock task %q archive path = %q, want %q", name, got[name], path)
+		}
+	}
+	if len(got) != len(expected) {
+		t.Errorf("got %d Spock tasks, want %d", len(got), len(expected))
+	}
+}
+
+// TestSpockTasksStructure verifies all Spock tasks have required fields
+func TestSpockTasksStructure(t *testing.T) {
+	for i, task := range spockQueryTasks {
+		if task.Name == "" {
+			t.Errorf("spockQueryTasks[%d] missing Name", i)
+		}
+		if task.ArchivePath == "" {
+			t.Errorf("spockQueryTasks[%d] (%s) missing ArchivePath", i, task.Name)
+		}
+		if task.Query == "" {
+			t.Errorf("spockQueryTasks[%d] (%s) missing Query", i, task.Name)
+		}
+		if !strings.Contains(task.ArchivePath, "%s") {
+			t.Errorf("spockQueryTasks[%d] (%s) ArchivePath missing %%s placeholder: %s", i, task.Name, task.ArchivePath)
+		}
+	}
+}
+
+// TestSpockQueriesExcludeSensitiveColumns guards the three Spock relations that
+// carry conflicting-row images or node connection strings. Those columns must
+// never reach an archive, so no Spock query may name them, and the relations
+// holding them may not be read with SELECT *.
+func TestSpockQueriesExcludeSensitiveColumns(t *testing.T) {
+	// Substrings chosen to catch the whole family: "local_tup" also matches
+	// resolutions.local_tuple, "remote_tup" also matches remote_old_tup,
+	// remote_new_tup and resolutions.remote_tuple.
+	forbidden := []string{"local_tup", "remote_tup", "if_dsn", "node_interface", "resolution_details"}
+
+	for _, task := range spockQueryTasks {
+		for _, bad := range forbidden {
+			if strings.Contains(task.Query, bad) {
+				t.Errorf("Spock task %q query names sensitive column %q", task.Name, bad)
+			}
+		}
+	}
+
+	// The relations carrying those columns must use explicit column lists.
+	starRelations := []struct {
+		task     string
+		relation string
+	}{
+		{"spock_exception_log", "spock.exception_log"},
+		{"spock_resolutions", "spock.resolutions"},
+		{"spock_node", "spock.node"},
+	}
+	byName := make(map[string]SimpleQueryTask, len(spockQueryTasks))
+	for _, task := range spockQueryTasks {
+		byName[task.Name] = task
+	}
+	for _, r := range starRelations {
+		task, found := byName[r.task]
+		if !found {
+			t.Errorf("Spock task %q not registered", r.task)
+			continue
+		}
+		if strings.Contains(task.Query, "SELECT * FROM "+r.relation) {
+			t.Errorf("Spock task %q reads %s with SELECT *; an explicit column list is required", r.task, r.relation)
+		}
+	}
+}
+
+// TestGenerateDatabaseTasksRegistersAllRegistries traces the full path from the
+// three per-database registries to the archive paths they produce, and confirms
+// the template databases are left out.
+func TestGenerateDatabaseTasksRegistersAllRegistries(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create mock: %v", err)
+	}
+	defer closeErrCheck(db, "mock database")
+
+	mock.ExpectQuery("SELECT datname FROM pg_database").
+		WillReturnRows(sqlmock.NewRows([]string{"datname"}).
+			AddRow("mydb").AddRow("template0").AddRow("template1"))
+
+	tasks, err := generateDatabaseTasks(db)
+	if err != nil {
+		t.Fatalf("generateDatabaseTasks: %v", err)
+	}
+
+	paths := make(map[string]string, len(tasks))
+	for _, task := range tasks {
+		if task.Category != "database" {
+			t.Errorf("task %q has category %q, want \"database\"", task.Name, task.Category)
+		}
+		paths[task.Name] = task.ArchivePath
+	}
+
+	// One representative per registry: per-database, pg_statviz, Spock.
+	expected := map[string]string{
+		"mydb/tables":              "databases/mydb/tables.tsv",
+		"mydb/pg_statviz_blocking": "pg_statviz/mydb/blocking.tsv",
+		"mydb/spock_lag_tracker":   "spock/mydb/lag_tracker.tsv",
+	}
+	for name, want := range expected {
+		if paths[name] != want {
+			t.Errorf("task %q archive path = %q, want %q", name, paths[name], want)
+		}
+	}
+
+	wantCount := len(perDatabaseQueryTasks) + len(pgStatvizQueryTasks) + len(spockQueryTasks)
+	if len(tasks) != wantCount {
+		t.Errorf("got %d tasks for one database, want %d", len(tasks), wantCount)
+	}
+
+	for name := range paths {
+		if strings.HasPrefix(name, "template0/") || strings.HasPrefix(name, "template1/") {
+			t.Errorf("template database was not skipped: task %q", name)
+		}
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet sqlmock expectations: %v", err)
+	}
+}
+
 // TestLazyZipWriter verifies the lazy ZIP writer prevents empty entries
 func TestLazyZipWriter(t *testing.T) {
 	var buf bytes.Buffer

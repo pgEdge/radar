@@ -159,9 +159,10 @@ func TestPostgreSQLTasksStructure(t *testing.T) {
 	}
 }
 
-// TestPGQueryCollectorUnavailableAsSkip verifies that PG errors for missing
-// extensions (undefined_table/function/object, invalid_schema) are returned
-// as SkipError, while real errors (permission denied) are returned as-is.
+// TestPGQueryCollectorUnavailableAsSkip verifies that PG errors for objects
+// radar cannot reach (missing extension, or an existing object the collecting
+// role has no rights on) are returned as SkipError, while real errors are
+// returned as-is.
 func TestPGQueryCollectorUnavailableAsSkip(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -172,7 +173,7 @@ func TestPGQueryCollectorUnavailableAsSkip(t *testing.T) {
 		{"undefined_function is skip", &pgconn.PgError{Code: "42883", Message: "function does not exist"}, true},
 		{"undefined_object is skip", &pgconn.PgError{Code: "42704", Message: "type does not exist"}, true},
 		{"invalid_schema is skip", &pgconn.PgError{Code: "3F000", Message: "schema \"pgstatviz\" does not exist"}, true},
-		{"permission_denied is real error", &pgconn.PgError{Code: "42501", Message: "permission denied"}, false},
+		{"insufficient_privilege is skip", &pgconn.PgError{Code: "42501", Message: "permission denied for schema spock"}, true},
 		{"syntax_error is real error", &pgconn.PgError{Code: "42601", Message: "syntax error"}, false},
 	}
 	for _, tt := range tests {

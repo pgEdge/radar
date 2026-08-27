@@ -697,6 +697,107 @@ var pgStatvizQueryTasks = []SimpleQueryTask{
 	},
 }
 
+// Spock replication query tasks, one file per catalogue relation under
+// spock/{dbname}/ (sorted alphabetically by name). Spock's catalogue is
+// per-database, so these are generated per database like the pg_statviz ones.
+//
+// Three Spock relations carry data that must never enter an archive, because an
+// archive gets attached to a support ticket: exception_log holds jsonb images of
+// the conflicting rows, resolutions holds the same as text, and
+// node_interface.if_dsn holds the node connection string with its password. The
+// two tasks that read those tables name their columns explicitly instead of
+// using SELECT *, and node_interface is not collected at all.
+var spockQueryTasks = []SimpleQueryTask{
+	{
+		Name:        "spock_channel_summary_stats",
+		ArchivePath: "spock/%s/channel_summary_stats.tsv",
+		Query:       "SELECT * FROM spock.channel_summary_stats ORDER BY sub_name",
+	},
+	{
+		// local_tup, remote_old_tup and remote_new_tup are excluded
+		// deliberately: they are jsonb images of the conflicting rows.
+		// error_message is kept even though a constraint violation quotes the
+		// offending key, because without it the log says only that something
+		// failed.
+		Name:        "spock_exception_log",
+		ArchivePath: "spock/%s/exception_log.tsv",
+		Query: `SELECT remote_origin, remote_commit_ts, command_counter,
+       retry_errored_at, remote_xid, local_origin, local_commit_ts,
+       table_schema, table_name, operation, ddl_statement, ddl_user,
+       error_message
+FROM spock.exception_log
+ORDER BY retry_errored_at DESC NULLS LAST
+LIMIT 1000`,
+	},
+	{
+		Name:        "spock_lag_tracker",
+		ArchivePath: "spock/%s/lag_tracker.tsv",
+		Query:       "SELECT * FROM spock.lag_tracker ORDER BY origin_name, receiver_name",
+	},
+	{
+		Name:        "spock_local_node",
+		ArchivePath: "spock/%s/local_node.tsv",
+		Query:       "SELECT * FROM spock.local_node ORDER BY node_id",
+	},
+	{
+		Name:        "spock_local_sync_status",
+		ArchivePath: "spock/%s/local_sync_status.tsv",
+		Query:       "SELECT * FROM spock.local_sync_status ORDER BY sync_subid, sync_nspname, sync_relname",
+	},
+	{
+		// info is excluded deliberately: it is jsonb set at node creation, so
+		// what it holds depends on the deployment rather than on Spock.
+		Name:        "spock_node",
+		ArchivePath: "spock/%s/node.tsv",
+		Query:       "SELECT node_id, node_name, location, country FROM spock.node ORDER BY node_name",
+	},
+	{
+		// Column names only, no values: this table records which columns hold
+		// personally identifiable information.
+		Name:        "spock_pii",
+		ArchivePath: "spock/%s/pii.tsv",
+		Query:       "SELECT * FROM spock.pii ORDER BY pii_schema, pii_table, pii_column",
+	},
+	{
+		Name:        "spock_progress",
+		ArchivePath: "spock/%s/progress.tsv",
+		Query:       "SELECT * FROM spock.progress ORDER BY node_id, remote_node_id",
+	},
+	{
+		Name:        "spock_replication_set",
+		ArchivePath: "spock/%s/replication_set.tsv",
+		Query:       "SELECT * FROM spock.replication_set ORDER BY set_name",
+	},
+	{
+		Name:        "spock_replication_set_table",
+		ArchivePath: "spock/%s/replication_set_table.tsv",
+		Query:       "SELECT * FROM spock.replication_set_table ORDER BY set_id, set_reloid",
+	},
+	{
+		// local_tuple and remote_tuple are excluded deliberately: they are text
+		// images of the conflicting rows.
+		Name:        "spock_resolutions",
+		ArchivePath: "spock/%s/resolutions.tsv",
+		Query: `SELECT id, node_name, log_time, relname, idxname,
+       conflict_type, conflict_resolution, local_origin, local_xid,
+       local_timestamp, remote_origin, remote_xid, remote_timestamp,
+       remote_lsn
+FROM spock.resolutions
+ORDER BY log_time DESC
+LIMIT 1000`,
+	},
+	{
+		Name:        "spock_subscription",
+		ArchivePath: "spock/%s/subscription.tsv",
+		Query:       "SELECT * FROM spock.subscription ORDER BY sub_name",
+	},
+	{
+		Name:        "spock_tables",
+		ArchivePath: "spock/%s/tables.tsv",
+		Query:       "SELECT * FROM spock.tables ORDER BY nspname, relname",
+	},
+}
+
 // buildQueryTasks converts SimpleQueryTask registry to CollectionTask slice
 func buildQueryTasks(category string, tasks []SimpleQueryTask, db *sql.DB) []CollectionTask {
 	result := make([]CollectionTask, len(tasks))

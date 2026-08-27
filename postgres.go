@@ -21,9 +21,11 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// isPGUnavailableError reports whether err indicates that the queried object
-// is not installed/available (missing extension, table, function, or schema).
-// These are treated as skips rather than failures.
+// isPGUnavailableError reports whether err indicates that radar cannot reach
+// the queried object: it is not installed (missing extension, table, function,
+// or schema), or it exists but the collecting role has no rights on it. Both
+// are treated as skips rather than failures, so a monitoring role that lacks
+// rights on one object costs radar that one file and never the whole run.
 func isPGUnavailableError(err error) bool {
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) {
@@ -33,6 +35,7 @@ func isPGUnavailableError(err error) bool {
 	case "42P01", // undefined_table
 		"42704", // undefined_object
 		"42883", // undefined_function
+		"42501", // insufficient_privilege
 		"3F000": // invalid_schema_name
 		return true
 	}
@@ -141,7 +144,11 @@ func generateDatabaseTasks(db *sql.DB) ([]CollectionTask, error) {
 
 	// Generate tasks for each database
 	var tasks []CollectionTask
-	allDBTasks := append(perDatabaseQueryTasks, pgStatvizQueryTasks...)
+	allDBTasks := make([]SimpleQueryTask, 0,
+		len(perDatabaseQueryTasks)+len(pgStatvizQueryTasks)+len(spockQueryTasks))
+	allDBTasks = append(allDBTasks, perDatabaseQueryTasks...)
+	allDBTasks = append(allDBTasks, pgStatvizQueryTasks...)
+	allDBTasks = append(allDBTasks, spockQueryTasks...)
 
 	for _, dbname := range databases {
 		// Capture loop variables for closure

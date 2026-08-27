@@ -10,6 +10,7 @@ Complete reference of all data collected by radar.
 - **PostgreSQL Instance**: Instance-level PostgreSQL collectors
 - **Per-Database**: Schema and object collectors (per database)
 - **pg_statviz (optional)**: Time-series statistics collectors (per database)
+- **Spock (optional)**: Multi-master replication state collectors (per database)
 
 **Output**: All data collected in a single ZIP file named `radar-{hostname}-{timestamp}.zip`. The archive root contains a `radar.out` entry identifying the radar binary that produced it (`version` from the build-time `-X main.version` stamp, `commit` from Go's embedded VCS info).
 
@@ -326,3 +327,27 @@ If the pg_statviz extension is installed in a database, these collectors are ava
 | `snapshots.tsv` | `pgstatviz.snapshots` | Snapshot timestamps |
 | `wait.tsv` | `pgstatviz.wait` | Wait event statistics (JSONB) |
 | `wal.tsv` | `pgstatviz.wal` | WAL statistics (PG14+) |
+
+---
+
+## Spock Collectors (Optional)
+
+If the [Spock](https://github.com/pgEdge/spock) extension is installed in a database, these collectors are available. Files stored in `spock/{dbname}/`.
+
+Three Spock relations carry data that must never enter an archive, since an archive is routinely attached to a support ticket. `exception_log` holds jsonb images of the conflicting rows, `resolutions` holds the same as text, and `node_interface.if_dsn` holds the node connection string including its password. The two tasks reading those tables name their columns explicitly rather than using `SELECT *`, and `node_interface` is not collected at all.
+
+| File | Relation | Description |
+|------|----------|-------------|
+| `channel_summary_stats.tsv` | `spock.channel_summary_stats` | Per-subscription counters: rows applied, conflicts, delta-apply conflicts. Aggregates only, no row data |
+| `exception_log.tsv` | `spock.exception_log` | Last 1000 apply exceptions by retry time. Excludes `local_tup`, `remote_old_tup` and `remote_new_tup` (jsonb row images). Keeps `error_message`, which can quote a constraint's offending key |
+| `lag_tracker.tsv` | `spock.lag_tracker` | Per-node-pair replication lag in bytes and time |
+| `local_node.tsv` | `spock.local_node` | Which node this database is |
+| `local_sync_status.tsv` | `spock.local_sync_status` | Per-relation initial sync state |
+| `node.tsv` | `spock.node` | Cluster node roster: id, name, location, country. Excludes `info` (deployment-defined jsonb) |
+| `pii.tsv` | `spock.pii` | Columns registered as holding personally identifiable information. Column names only, no values |
+| `progress.tsv` | `spock.progress` | Apply progress per origin: commit timestamp and LSNs |
+| `replication_set.tsv` | `spock.replication_set` | Replication sets and which operations they replicate |
+| `replication_set_table.tsv` | `spock.replication_set_table` | Table membership of replication sets, with column list and row filter |
+| `resolutions.tsv` | `spock.resolutions` | Last 1000 conflict resolutions by log time. Excludes `local_tuple` and `remote_tuple` (text row images) |
+| `subscription.tsv` | `spock.subscription` | Subscriptions with enabled state, slot name, replication sets and apply delay |
+| `tables.tsv` | `spock.tables` | User tables and the replication set each belongs to, if any |

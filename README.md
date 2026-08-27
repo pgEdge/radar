@@ -208,7 +208,12 @@ For a complete reference of all collected data, see [docs/data.md](docs/data.md)
 
 **[pg_statviz](https://github.com/vyruss/pg_statviz) Extension** (if present)
 
-- **Time-series statistics**: `pgstatviz.buf`, `pgstatviz.conf`, `pgstatviz.conn`, `pgstatviz.db`, `pgstatviz.io`, `pgstatviz.lock`, `pgstatviz.snapshots`, `pgstatviz.wait`, `pgstatviz.wal`
+- **Time-series statistics**: `pgstatviz.blocking`, `pgstatviz.buf`, `pgstatviz.conf`, `pgstatviz.conn`, `pgstatviz.db`, `pgstatviz.io`, `pgstatviz.lock`, `pgstatviz.repl`, `pgstatviz.slru`, `pgstatviz.snapshots`, `pgstatviz.wait`, `pgstatviz.wal`
+
+**[Spock](https://github.com/pgEdge/spock) Extension** (if present)
+
+- **Replication state**: `spock.channel_summary_stats`, `spock.lag_tracker`, `spock.local_node`, `spock.local_sync_status`, `spock.node`, `spock.pii`, `spock.progress`, `spock.replication_set`, `spock.replication_set_table`, `spock.subscription`, `spock.tables`
+- **Conflicts**: `spock.exception_log` and `spock.resolutions`, carrying counters, timestamps and conflict types only. The jsonb and text images of the conflicting rows are excluded, and `spock.node_interface` is not collected at all because `if_dsn` holds the node password
 
 ## Output Structure
 
