@@ -674,8 +674,10 @@ func readFile(path string) ([]byte, error) {
 
 // writeDirListingTSV writes a TSV listing of the regular files in dir: one row
 // per file with its size and modification time. File contents are never read.
-// A directory that is absent or unreadable is a skip, which is the normal case
-// when radar runs as an OS user without rights on the path.
+// Directories, symlinks and other irregular entries are left out, having no
+// meaningful size to report. A directory that is absent or unreadable is a skip,
+// which is the normal case when radar runs as an OS user without rights on the
+// path.
 func writeDirListingTSV(dir string, w io.Writer) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -687,12 +689,12 @@ func writeDirListingTSV(dir string, w io.Writer) error {
 	}
 
 	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
 		info, err := entry.Info()
 		if err != nil {
-			// The file went away between the listing and the stat.
+			// The entry went away between the listing and the stat.
+			continue
+		}
+		if !info.Mode().IsRegular() {
 			continue
 		}
 		if _, err := fmt.Fprintf(w, "%s\t%s\t%d\t%s\n",

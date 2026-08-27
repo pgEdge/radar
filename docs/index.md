@@ -196,7 +196,7 @@ For a complete reference of all collected data, see [data.md](data.md).
 **[Spock](https://github.com/pgEdge/spock) Extension** (if present)
 
 - **Replication state**: `spock.channel_summary_stats`, `spock.lag_tracker`, `spock.local_node`, `spock.local_sync_status`, `spock.node`, `spock.pii`, `spock.progress`, `spock.replication_set`, `spock.replication_set_table`, `spock.subscription`, `spock.tables`
-- **Conflicts**: `spock.exception_log` and `spock.resolutions`, carrying counters, timestamps and conflict types only. The jsonb and text images of the conflicting rows are excluded, and `spock.node_interface` is not collected at all because `if_dsn` holds the node password
+- **Conflicts**: `spock.exception_log` and `spock.resolutions`, carrying counters, timestamps, conflict types and the apply error message. The jsonb and text images of the conflicting rows are excluded, and `spock.node_interface` is not collected at all because `if_dsn` holds the node password. `error_message` is retained: Spock stores no `DETAIL`, so a constraint violation's offending key is not included, though an error whose primary message embeds a value would carry it
 
 ## Output Structure
 

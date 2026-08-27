@@ -301,6 +301,29 @@ func cutLastField(row string) (head, last string, found bool) {
 	return row[:i], row[i+1:], true
 }
 
+// TestWriteDirListingTSVSkipsIrregularEntries verifies that only regular files
+// are listed. A symlink or socket has no meaningful size to report, and its
+// lstat size describes the entry rather than any log content.
+func TestWriteDirListingTSVSkipsIrregularEntries(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, filepath.Join(dir, "real.log"), "hello")
+	if err := os.Symlink(filepath.Join(dir, "real.log"), filepath.Join(dir, "link.log")); err != nil {
+		t.Skipf("cannot create a symlink here: %v", err)
+	}
+
+	var buf bytes.Buffer
+	if err := writeDirListingTSV(dir, &buf); err != nil {
+		t.Fatalf("writeDirListingTSV: %v", err)
+	}
+
+	if !strings.Contains(buf.String(), "real.log") {
+		t.Errorf("listing lost the regular file: %q", buf.String())
+	}
+	if strings.Contains(buf.String(), "link.log") {
+		t.Errorf("listing includes a symlink: %q", buf.String())
+	}
+}
+
 // TestWriteDirListingTSVUnreadableIsSkip verifies that a directory radar cannot
 // list costs it that one file rather than failing the run. That is the normal
 // case when radar runs as an OS user without rights on the path.

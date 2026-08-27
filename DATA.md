@@ -346,7 +346,7 @@ Three Spock relations carry data that must never enter an archive, since an arch
 | File | Relation | Description |
 |------|----------|-------------|
 | `channel_summary_stats.tsv` | `spock.channel_summary_stats` | Per-subscription counters: rows applied, conflicts, delta-apply conflicts. Aggregates only, no row data |
-| `exception_log.tsv` | `spock.exception_log` | Last 1000 apply exceptions by retry time. Excludes `local_tup`, `remote_old_tup` and `remote_new_tup` (jsonb row images). Keeps `error_message`, which can quote a constraint's offending key |
+| `exception_log.tsv` | `spock.exception_log` | Last 1000 apply exceptions by retry time. Excludes `local_tup`, `remote_old_tup` and `remote_new_tup` (jsonb row images). Keeps `error_message`, the primary error message with its SQLSTATE. Spock stores no `DETAIL`, so a constraint violation's offending key is not included, though an error whose primary message embeds a value (a failed type conversion, for example) would carry it |
 | `lag_tracker.tsv` | `spock.lag_tracker` | Per-node-pair replication lag in bytes and time |
 | `local_node.tsv` | `spock.local_node` | Which node this database is |
 | `local_sync_status.tsv` | `spock.local_sync_status` | Per-relation initial sync state |
