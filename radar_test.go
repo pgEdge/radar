@@ -622,6 +622,39 @@ func TestQueryTaskColumnsCoverage(t *testing.T) {
 	}
 }
 
+// TestPgStatvizCollectorsRegistered pins the set of pg_statviz tables radar
+// collects, and the archive path each one lands on.
+func TestPgStatvizCollectorsRegistered(t *testing.T) {
+	expected := map[string]string{
+		"pg_statviz_blocking":  "pg_statviz/%s/blocking.tsv",
+		"pg_statviz_buf":       "pg_statviz/%s/buf.tsv",
+		"pg_statviz_conf":      "pg_statviz/%s/conf.tsv",
+		"pg_statviz_conn":      "pg_statviz/%s/conn.tsv",
+		"pg_statviz_db":        "pg_statviz/%s/db.tsv",
+		"pg_statviz_io":        "pg_statviz/%s/io.tsv",
+		"pg_statviz_lock":      "pg_statviz/%s/lock.tsv",
+		"pg_statviz_repl":      "pg_statviz/%s/repl.tsv",
+		"pg_statviz_slru":      "pg_statviz/%s/slru.tsv",
+		"pg_statviz_snapshots": "pg_statviz/%s/snapshots.tsv",
+		"pg_statviz_wait":      "pg_statviz/%s/wait.tsv",
+		"pg_statviz_wal":       "pg_statviz/%s/wal.tsv",
+	}
+
+	got := make(map[string]string, len(pgStatvizQueryTasks))
+	for _, task := range pgStatvizQueryTasks {
+		got[task.Name] = task.ArchivePath
+	}
+
+	for name, path := range expected {
+		if got[name] != path {
+			t.Errorf("pg_statviz task %q archive path = %q, want %q", name, got[name], path)
+		}
+	}
+	if len(got) != len(expected) {
+		t.Errorf("got %d pg_statviz tasks, want %d", len(got), len(expected))
+	}
+}
+
 // TestPgStatvizTasksStructure verifies all pg_statviz tasks have required fields
 func TestPgStatvizTasksStructure(t *testing.T) {
 	for i, task := range pgStatvizQueryTasks {

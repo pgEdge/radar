@@ -314,6 +314,7 @@ If the pg_statviz extension is installed in a database, these collectors are ava
 
 | File | Table | Description |
 |------|-------|-------------|
+| `blocking.tsv` | `pgstatviz.blocking` | Blocking lock history: blocked and blocker counts, plus per-lock-type counts (JSONB, pg_statviz 1.2+) |
 | `buf.tsv` | `pgstatviz.buf` | Buffer and checkpoint statistics |
 | `conf.tsv` | `pgstatviz.conf` | Configuration snapshots (JSONB) |
 | `conn.tsv` | `pgstatviz.conn` | Connection statistics (JSONB) |

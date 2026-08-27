@@ -636,6 +636,11 @@ WHERE datname = current_database()`,
 // These are per-database tasks - ArchivePath will be formatted with dbname
 var pgStatvizQueryTasks = []SimpleQueryTask{
 	{
+		Name:        "pg_statviz_blocking",
+		ArchivePath: "pg_statviz/%s/blocking.tsv",
+		Query:       "SELECT * FROM pgstatviz.blocking ORDER BY snapshot_tstamp",
+	},
+	{
 		Name:        "pg_statviz_buf",
 		ArchivePath: "pg_statviz/%s/buf.tsv",
 		Query:       "SELECT * FROM pgstatviz.buf ORDER BY snapshot_tstamp",
