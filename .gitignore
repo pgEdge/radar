@@ -6,6 +6,9 @@ pg_statviz_export
 .claude/
 CLAUDE.md
 
+# Internal backlog notes (never published)
+FEAT_*.md
+
 # Backup files
 *.backup
 *.bak
