@@ -56,6 +56,71 @@ useradd -m -s /bin/bash radaruser || true
 cp radar /home/radaruser/
 chown radaruser:radaruser /home/radaruser/radar
 
+echo ""
+echo "Setting up a PgBouncer configuration fixture..."
+mkdir -p /etc/pgbouncer
+cat > /etc/pgbouncer/pgbouncer.ini << 'PGBINI'
+; PgBouncer test fixture
+[databases]
+testdb = host=127.0.0.1 port=5432 dbname=testdb user=pooler password=ini-secret-value
+
+[pgbouncer]
+listen_addr = 127.0.0.1
+listen_port = 6432
+auth_type = scram-sha-256
+auth_file = /etc/pgbouncer/userlist.txt
+pool_mode = transaction
+max_client_conn = 500
+PGBINI
+cat > /etc/pgbouncer/userlist.txt << 'PGBUSERS'
+"pooler" "SCRAM-SHA-256$4096:userlist-secret-value"
+PGBUSERS
+# The redaction is what protects pgbouncer.ini, not the file mode, so make it
+# world-readable and let every scenario exercise the filter. userlist.txt stays
+# root-only: radar records that it is there and never reads it.
+chmod 0644 /etc/pgbouncer/pgbouncer.ini
+chmod 0600 /etc/pgbouncer/userlist.txt
+
+# Verifies PgBouncer collection. pgbouncer.ini ships with the [pgbouncer] section
+# intact and every other value removed, and userlist.txt is recorded as a
+# directory entry only: its contents are credentials.
+validate_pgbouncer() {
+	local zip_file="$1"
+	local scenario="$2"
+
+	local ini
+	ini=$(unzip -p "$zip_file" "pgbouncer/pgbouncer.ini" 2>/dev/null || true)
+	if [ -z "$ini" ]; then
+		echo -e "${RED}✗ $scenario FAILED: pgbouncer/pgbouncer.ini missing${NC}"
+		return 1
+	fi
+	if ! echo "$ini" | grep -q "^max_client_conn = 500$"; then
+		echo -e "${RED}✗ $scenario FAILED: pgbouncer.ini lost its [pgbouncer] values${NC}"
+		return 1
+	fi
+	if ! echo "$ini" | grep -q "^\[databases\]$"; then
+		echo -e "${RED}✗ $scenario FAILED: pgbouncer.ini lost its section headers${NC}"
+		return 1
+	fi
+
+	if ! unzip -p "$zip_file" "pgbouncer/files.tsv" 2>/dev/null | grep -q "userlist.txt"; then
+		echo -e "${RED}✗ $scenario FAILED: pgbouncer/files.tsv does not record userlist.txt${NC}"
+		return 1
+	fi
+
+	# Neither secret may appear anywhere in the archive.
+	if unzip -p "$zip_file" 2>/dev/null | grep -q "ini-secret-value"; then
+		echo -e "${RED}✗ $scenario FAILED: a [databases] password reached the archive${NC}"
+		return 1
+	fi
+	if unzip -p "$zip_file" 2>/dev/null | grep -q "userlist-secret-value"; then
+		echo -e "${RED}✗ $scenario FAILED: userlist.txt contents reached the archive${NC}"
+		return 1
+	fi
+
+	return 0
+}
+
 # Verifies the log directory listing. It carries names, sizes and timestamps
 # only, never log contents. $PGDATA is mode 0700 and owned by postgres, so the
 # root scenarios can list it and the non-root ones must skip it cleanly.
@@ -185,6 +250,10 @@ validate_zip() {
 	# require_system is "yes" for the scenarios running as root, which are the
 	# same ones that can traverse $PGDATA to reach the log directory.
 	if ! validate_log_directory "$zip_file" "$scenario" "$require_system"; then
+		return 1
+	fi
+
+	if ! validate_pgbouncer "$zip_file" "$scenario"; then
 		return 1
 	fi
 

@@ -26,5 +26,8 @@ func getSystemTasks() []CollectionTask {
 	// Add container-specific tasks when running inside a container
 	tasks = append(tasks, getContainerTasks()...)
 
+	// Add PgBouncer tasks, which skip cleanly when it is not installed
+	tasks = append(tasks, getPgBouncerTasks()...)
+
 	return tasks
 }

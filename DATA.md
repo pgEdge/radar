@@ -11,6 +11,7 @@ Complete reference of all data collected by radar.
 - **Per-Database**: Schema and object collectors (per database)
 - **pg_statviz (optional)**: Time-series statistics collectors (per database)
 - **Spock (optional)**: Multi-master replication state collectors (per database)
+- **PgBouncer (optional)**: Pooler configuration, when PgBouncer is installed
 
 **Output**: All data collected in a single ZIP file named `radar-{hostname}-{timestamp}.zip`. The archive root contains a `radar.out` entry identifying the radar binary that produced it (`version` from the build-time `-X main.version` stamp, `commit` from Go's embedded VCS info).
 
@@ -357,3 +358,16 @@ Three Spock relations carry data that must never enter an archive, since an arch
 | `resolutions.tsv` | `spock.resolutions` | Last 1000 conflict resolutions by log time. Excludes `local_tuple` and `remote_tuple` (text row images) |
 | `subscription.tsv` | `spock.subscription` | Subscriptions with enabled state, slot name, replication sets and apply delay |
 | `tables.tsv` | `spock.tables` | User tables and the replication set each belongs to, if any |
+
+---
+
+## PgBouncer Collectors (Optional)
+
+Collected when a PgBouncer configuration directory is present, from `/etc/pgbouncer/` or `/usr/local/etc/pgbouncer/`, tried in that order. Skipped when PgBouncer is not installed. These need no database connection, so they are collected even when the PostgreSQL instance is unreachable.
+
+**`userlist.txt` contents are never collected.** The file holds credentials, so `files.tsv` records that it is there and nothing more.
+
+| File | Source | Description |
+|------|--------|-------------|
+| `pgbouncer/pgbouncer.ini` | `pgbouncer.ini` | The `[pgbouncer]` section verbatim: pool mode, connection limits, listen address, auth type and auth file. Every other section keeps its key names and loses its values, because `[databases]` and `[peers]` connection strings routinely contain `password=`. Comments outside `[pgbouncer]` are redacted the same way, since a commented-out entry carries a password as readily as a live one. An `%include` line is kept, but the file it names is not followed |
+| `pgbouncer/files.tsv` | filesystem | Listing of the configuration directory: name, size and modification time per file. This is how `userlist.txt` is recorded |

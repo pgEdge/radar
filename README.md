@@ -212,6 +212,10 @@ For a complete reference of all collected data, see [docs/data.md](docs/data.md)
 
 - **Time-series statistics**: `pgstatviz.blocking`, `pgstatviz.buf`, `pgstatviz.conf`, `pgstatviz.conn`, `pgstatviz.db`, `pgstatviz.io`, `pgstatviz.lock`, `pgstatviz.repl`, `pgstatviz.slru`, `pgstatviz.snapshots`, `pgstatviz.wait`, `pgstatviz.wal`
 
+**[PgBouncer](https://www.pgbouncer.org/)** (if installed)
+
+- **Pooler configuration**: the `[pgbouncer]` section of `pgbouncer.ini`, plus a listing of the configuration directory. Values outside `[pgbouncer]` are removed, because `[databases]` connection strings routinely contain `password=`. `userlist.txt` is recorded as a directory entry only: it holds credentials and its contents are never collected
+
 **[Spock](https://github.com/pgEdge/spock) Extension** (if present)
 
 - **Replication state**: `spock.channel_summary_stats`, `spock.lag_tracker`, `spock.local_node`, `spock.local_sync_status`, `spock.node`, `spock.pii`, `spock.progress`, `spock.replication_set`, `spock.replication_set_table`, `spock.subscription`, `spock.tables`
@@ -238,14 +242,25 @@ radar-hostname-20260115-133700.zip
 │   ├── postgresql.conf
 │   ├── pg_hba.conf
 │   └── ...
-└── databases/           (Per-database data)
-    ├── postgres/
-    │   ├── extensions.tsv
-    │   ├── tables.tsv
-    │   └── ...
-    └── mydb/
-        ├── extensions.tsv
-        └── ...
+├── databases/           (Per-database data)
+│   ├── postgres/
+│   │   ├── extensions.tsv
+│   │   ├── tables.tsv
+│   │   └── ...
+│   └── mydb/
+│       ├── extensions.tsv
+│       └── ...
+├── pg_statviz/          (Per-database pg_statviz time series, if installed)
+│   └── mydb/
+│       ├── snapshots.tsv
+│       └── ...
+├── spock/               (Per-database Spock replication state, if installed)
+│   └── mydb/
+│       ├── lag_tracker.tsv
+│       └── ...
+└── pgbouncer/           (PgBouncer configuration, if installed)
+    ├── pgbouncer.ini
+    └── files.tsv
 ```
 
 **File Formats**:
