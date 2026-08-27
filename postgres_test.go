@@ -262,9 +262,20 @@ func TestWriteDirListingTSV(t *testing.T) {
 		dir + "\ta.log\t5",
 		dir + "\tb.log\t2",
 	}
-	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
+	assertListing(t, buf.String(), want)
+
+	if strings.Contains(buf.String(), "sub") {
+		t.Error("listing includes the subdirectory")
+	}
+}
+
+// assertListing compares a directory listing against want, whose first entry is
+// the header and whose remaining entries are rows without their timestamp.
+func assertListing(t *testing.T, listing string, want []string) {
+	t.Helper()
+	lines := strings.Split(strings.TrimRight(listing, "\n"), "\n")
 	if len(lines) != len(want) {
-		t.Fatalf("got %d lines, want %d (header plus two files): %q", len(lines), len(want), lines)
+		t.Fatalf("got %d lines, want %d: %q", len(lines), len(want), lines)
 	}
 	if lines[0] != want[0] {
 		t.Errorf("header = %q, want %q", lines[0], want[0])
@@ -277,10 +288,6 @@ func TestWriteDirListingTSV(t *testing.T) {
 		if _, err := time.Parse(time.RFC3339, modified); err != nil {
 			t.Errorf("row %d modified = %q is not RFC3339: %v", i, modified, err)
 		}
-	}
-
-	if strings.Contains(buf.String(), "sub") {
-		t.Error("listing includes the subdirectory")
 	}
 }
 

@@ -553,15 +553,15 @@ func TestPerDatabaseTasksStructure(t *testing.T) {
 // queryColumnChecks lists the column tokens each expanded query must keep
 // referencing, so an accidental column removal is caught.
 var queryColumnChecks = []struct {
-	taskList    string
+	tasks       []SimpleQueryTask
 	taskName    string
 	mustContain []string
 }{
-	{"postgres", "databases", []string{
+	{postgresQueryTasks, "databases", []string{
 		"datfrozenxid", "datminmxid", "datconnlimit",
 		"datistemplate", "datallowconn",
 	}},
-	{"perDB", "tables", []string{
+	{perDatabaseQueryTasks, "tables", []string{
 		"n_live_tup", "n_dead_tup", "last_autovacuum", "last_analyze",
 		"reltuples", "reloptions", "reltoastrelid", "relpersistence",
 		"relpages", "pg_relation_size", "pg_table_size", "LIMIT 1000",
@@ -574,24 +574,24 @@ var queryColumnChecks = []struct {
 		"age(c.relfrozenxid)", "mxid_age(c.relminmxid)",
 		"c.relfrozenxid <> '0'::xid", "c.relminmxid <> '0'::xid",
 	}},
-	{"perDB", "indexes", []string{
+	{perDatabaseQueryTasks, "indexes", []string{
 		"indrelid", "indclass", "indkey", "indisvalid",
 		"idx_scan", "pg_relation_size", "LIMIT 1000",
 		"many_indexes", "current_setting('block_size')",
 	}},
-	{"perDB", "sequences", []string{
+	{perDatabaseQueryTasks, "sequences", []string{
 		"pg_sequences", "last_value", "max_value", "min_value", "increment_by",
 	}},
-	{"postgres", "stat_ssl", []string{
+	{postgresQueryTasks, "stat_ssl", []string{
 		"pg_stat_ssl", "ssl", "cipher",
 	}},
-	{"postgres", "stat_replication_slots", []string{
+	{postgresQueryTasks, "stat_replication_slots", []string{
 		"pg_stat_replication_slots",
 	}},
-	{"perDB", "bloat", []string{
+	{perDatabaseQueryTasks, "bloat", []string{
 		"table_bloat_ratio", "wastedbytes",
 	}},
-	{"perDB", "pgstattuple", []string{
+	{perDatabaseQueryTasks, "pgstattuple", []string{
 		"pgstattuple_approx",
 	}},
 }
@@ -599,31 +599,32 @@ var queryColumnChecks = []struct {
 // TestQueryTaskColumnsCoverage asserts that the queries we expanded continue to
 // reference the column tokens we rely on.
 func TestQueryTaskColumnsCoverage(t *testing.T) {
-	taskByName := func(list []SimpleQueryTask, name string) *SimpleQueryTask {
-		for i := range list {
-			if list[i].Name == name {
-				return &list[i]
-			}
-		}
-		return nil
-	}
-
 	for _, c := range queryColumnChecks {
-		var task *SimpleQueryTask
-		switch c.taskList {
-		case "postgres":
-			task = taskByName(postgresQueryTasks, c.taskName)
-		case "perDB":
-			task = taskByName(perDatabaseQueryTasks, c.taskName)
-		}
+		task := findQueryTask(c.tasks, c.taskName)
 		if task == nil {
-			t.Errorf("task %q not found in %s tasks", c.taskName, c.taskList)
+			t.Errorf("task %q not found", c.taskName)
 			continue
 		}
-		for _, want := range c.mustContain {
-			if !strings.Contains(task.Query, want) {
-				t.Errorf("task %q query missing expected token %q", c.taskName, want)
-			}
+		assertQueryContains(t, c.taskName, task.Query, c.mustContain)
+	}
+}
+
+// findQueryTask returns the task named name, or nil when the registry has none.
+func findQueryTask(list []SimpleQueryTask, name string) *SimpleQueryTask {
+	for i := range list {
+		if list[i].Name == name {
+			return &list[i]
+		}
+	}
+	return nil
+}
+
+// assertQueryContains checks that query mentions every token in want.
+func assertQueryContains(t *testing.T, taskName, query string, want []string) {
+	t.Helper()
+	for _, token := range want {
+		if !strings.Contains(query, token) {
+			t.Errorf("task %q query missing expected token %q", taskName, token)
 		}
 	}
 }
@@ -774,6 +775,20 @@ func TestSpockQueriesExcludeSensitiveColumns(t *testing.T) {
 	}
 }
 
+// archivePathsByName maps task name to archive path, asserting every task is in
+// the "database" category on the way through.
+func archivePathsByName(t *testing.T, tasks []CollectionTask) map[string]string {
+	t.Helper()
+	paths := make(map[string]string, len(tasks))
+	for _, task := range tasks {
+		if task.Category != "database" {
+			t.Errorf("task %q has category %q, want \"database\"", task.Name, task.Category)
+		}
+		paths[task.Name] = task.ArchivePath
+	}
+	return paths
+}
+
 // TestGenerateDatabaseTasksRegistersAllRegistries traces the full path from the
 // three per-database registries to the archive paths they produce, and confirms
 // the template databases are left out.
@@ -793,13 +808,7 @@ func TestGenerateDatabaseTasksRegistersAllRegistries(t *testing.T) {
 		t.Fatalf("generateDatabaseTasks: %v", err)
 	}
 
-	paths := make(map[string]string, len(tasks))
-	for _, task := range tasks {
-		if task.Category != "database" {
-			t.Errorf("task %q has category %q, want \"database\"", task.Name, task.Category)
-		}
-		paths[task.Name] = task.ArchivePath
-	}
+	paths := archivePathsByName(t, tasks)
 
 	// One representative per registry: per-database, pg_statviz, Spock. The
 	// template databases must contribute nothing, so their entries expect "".
