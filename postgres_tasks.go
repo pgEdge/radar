@@ -177,9 +177,11 @@ ORDER BY datname`,
 		// radar runs as an OS user with no rights on the data directory. Names,
 		// sizes and timestamps only, never log contents.
 		//
-		// The LATERAL guard leaves the function uncalled when the logging
-		// collector is off, where log_directory need not exist and calling it
-		// would raise 58P01.
+		// pg_ls_logdir() raises 58P01 when the log directory is absent, which is
+		// the case whenever the logging collector is off. current_setting is
+		// STABLE so the planner considers it a pseudo-constant. It then works as
+		// a gate on a Result above the Function Scan, so pg_ls_logdir() is never
+		// executed.
 		Name:        "log_directory",
 		ArchivePath: "postgresql/log_directory.tsv",
 		Query: `SELECT l.name, l.size, l.modification

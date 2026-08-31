@@ -592,7 +592,7 @@ var queryColumnChecks = []struct {
 	}},
 	{postgresQueryTasks, "log_directory", []string{
 		// pg_ls_logdir() is executable by pg_monitor and needs no filesystem
-		// access. The LATERAL guard keeps it uncalled when the logging
+		// access. The pseudo-constant guard keeps it uncalled when the logging
 		// collector is off, where the directory need not exist.
 		"pg_ls_logdir()", "logging_collector", "LATERAL",
 	}},
