@@ -191,6 +191,13 @@ validate_freeze_age_file() {
 		return 1
 	fi
 
+	# An invalid relfrozenxid or relminmxid comes back as 2147483647, the INT_MAX
+	# both age() and mxid_age() return for one, so no age may read that.
+	if echo "$tsv" | tail -n +2 | awk -F'\t' '$5 == 2147483647 || $6 == 2147483647 {found=1} END {exit !found}'; then
+		echo -e "${RED}✗ $scenario FAILED: table_freeze_age.tsv reports an INT_MAX age${NC}"
+		return 1
+	fi
+
 	return 0
 }
 

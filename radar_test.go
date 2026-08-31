@@ -16,6 +16,7 @@ import (
 	"flag"
 	"io"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -750,16 +751,20 @@ func TestSpockTasksStructure(t *testing.T) {
 // never reach an archive, so no Spock query may name them, and the relations
 // holding them may not be read with SELECT *.
 func TestSpockQueriesExcludeSensitiveColumns(t *testing.T) {
-	// Substrings chosen to catch the whole family: "local_tup" also matches
-	// resolutions.local_tuple, "remote_tup" also matches remote_old_tup,
-	// remote_new_tup and resolutions.remote_tuple.
-	forbidden := []string{"local_tup", "remote_tup", "if_dsn", "node_interface", "resolution_details"}
+	// Every column named, matched on a word boundary. None of these names is a
+	// substring of another, so each one has to be listed: local_tup and
+	// local_tuple are columns of different relations.
+	forbidden := []string{
+		"local_tup", "remote_old_tup", "remote_new_tup", // exception_log row images
+		"local_tuple", "remote_tuple", "resolution_details", // resolutions row images
+		"if_dsn", "node_interface", // node connection string, password included
+		"info", // spock.node, deployment-defined jsonb
+	}
+	sensitive := regexp.MustCompile(`\b(` + strings.Join(forbidden, "|") + `)\b`)
 
 	for _, task := range spockQueryTasks {
-		for _, bad := range forbidden {
-			if strings.Contains(task.Query, bad) {
-				t.Errorf("Spock task %q query names sensitive column %q", task.Name, bad)
-			}
+		if found := sensitive.FindString(task.Query); found != "" {
+			t.Errorf("Spock task %q query names sensitive column %q", task.Name, found)
 		}
 	}
 
