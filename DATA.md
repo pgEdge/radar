@@ -246,7 +246,7 @@ Instance-level PostgreSQL collectors. Files stored in `postgresql/`.
 | `postgresql/db_role_setting.tsv` | `pg_db_role_setting` | Per-database/role settings |
 | `postgresql/file_settings.tsv` | `pg_file_settings` | Config file parse results and errors |
 | `postgresql/pg_hba.conf` | Data directory | Host-based authentication config |
-| `postgresql/log_directory.tsv` | `log_directory` + filesystem | Listing of the server log directory: name, size and modification time per file. Names only, never log contents. Skipped when radar has no rights on the path |
+| `postgresql/log_directory.tsv` | `pg_ls_logdir()` | Listing of the server log directory: name, size and modification time per file. Names only, never log contents. Readable by `pg_monitor` and needs no filesystem access, so it works when radar runs as a non-`postgres` OS user. Empty when `logging_collector` is off |
 | `postgresql/pg_hba_file_rules.tsv` | `pg_hba_file_rules` | Parsed pg_hba.conf rules (PG10+) |
 | `postgresql/pg_ident.conf` | Data directory | User name mapping config |
 | `postgresql/postgresql.auto.conf` | Data directory | Auto-generated configuration |
@@ -310,6 +310,7 @@ Collected for each accessible database. Files stored in `databases/{dbname}/`.
 | `stat_database.tsv` | `pg_stat_database` | Per-database statistics |
 | `statistics.tsv` | `pg_statistic_ext` | Extended statistics (PG10+) |
 | `subscription_tables.tsv` | `pg_subscription_rel` | Subscription relation states |
+| `table_freeze_age.tsv` | `pg_class` | Top 1000 relations by transaction-ID and multixact freeze age. Ranked by age rather than size, so a small table holding the wraparound horizon back is included where `tables.tsv` would miss it, and it covers `pg_catalog` and `pg_toast` relations that `tables.tsv` excludes. Relations with `relfrozenxid = 0` are left out, having no tuples of their own |
 | `tables.tsv` | `pg_class` + `pg_stat_all_tables` | Top 1000 tables by size with persistence, options, heap and table sizes, toast mapping, dead-tup counters, vacuum/analyze timestamps, per-table vacuum/analyze ages in seconds, and transaction-ID and multixact freeze ages (empty for partitioned tables, which hold no tuples of their own) |
 | `triggers.tsv` | `pg_trigger` | Triggers |
 | `types.tsv` | `pg_type` | Data types |
@@ -369,5 +370,5 @@ Collected when a PgBouncer configuration directory is present, from `/etc/pgboun
 
 | File | Source | Description |
 |------|--------|-------------|
-| `pgbouncer/pgbouncer.ini` | `pgbouncer.ini` | The `[pgbouncer]` section verbatim: pool mode, connection limits, listen address, auth type and auth file. Every other section keeps its key names and loses its values, because `[databases]` and `[peers]` connection strings routinely contain `password=`. Comments outside `[pgbouncer]` are redacted the same way, since a commented-out entry carries a password as readily as a live one. An `%include` line is kept, but the file it names is not followed |
+| `pgbouncer/pgbouncer.ini` | `pgbouncer.ini` | The `[pgbouncer]` section verbatim: pool mode, connection limits, listen address, auth type and auth file. Every other section keeps its key names and loses its values, because `[databases]` and `[peers]` connection strings routinely contain `password=`. Comments are dropped entirely, wherever they appear, since a commented-out entry carries a password as readily as a live one. An `%include` line is kept, but the file it names is not followed. The directory searched is `-pgbouncer-conf` when given, otherwise `/etc/pgbouncer/` then `/usr/local/etc/pgbouncer/` |
 | `pgbouncer/files.tsv` | filesystem | Listing of the configuration directory: name, size and modification time per file. This is how `userlist.txt` is recorded |

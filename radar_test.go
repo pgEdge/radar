@@ -561,6 +561,14 @@ var queryColumnChecks = []struct {
 		"datfrozenxid", "datminmxid", "datconnlimit",
 		"datistemplate", "datallowconn",
 	}},
+	{perDatabaseQueryTasks, "table_freeze_age", []string{
+		// Ranked by freeze age rather than size, so a small table near the
+		// wraparound threshold is included. Reaches pg_catalog and pg_toast,
+		// which tables.tsv excludes.
+		"age(c.relfrozenxid)", "mxid_age(c.relminmxid)",
+		"GREATEST", "c.relfrozenxid <> '0'::xid", "LIMIT 1000",
+		"'r', 'm', 't'",
+	}},
 	{perDatabaseQueryTasks, "tables", []string{
 		"n_live_tup", "n_dead_tup", "last_autovacuum", "last_analyze",
 		"reltuples", "reloptions", "reltoastrelid", "relpersistence",
@@ -581,6 +589,12 @@ var queryColumnChecks = []struct {
 	}},
 	{perDatabaseQueryTasks, "sequences", []string{
 		"pg_sequences", "last_value", "max_value", "min_value", "increment_by",
+	}},
+	{postgresQueryTasks, "log_directory", []string{
+		// pg_ls_logdir() is executable by pg_monitor and needs no filesystem
+		// access. The LATERAL guard keeps it uncalled when the logging
+		// collector is off, where the directory need not exist.
+		"pg_ls_logdir()", "logging_collector", "LATERAL",
 	}},
 	{postgresQueryTasks, "stat_ssl", []string{
 		"pg_stat_ssl", "ssl", "cipher",

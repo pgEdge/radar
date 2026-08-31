@@ -172,6 +172,22 @@ ORDER BY datname`,
 		Query:       "SELECT * FROM pg_file_settings ORDER BY sourcefile, seqno",
 	},
 	{
+		// pg_ls_logdir() rather than walking the directory: it is executable by
+		// pg_monitor and needs no filesystem access, so the listing works when
+		// radar runs as an OS user with no rights on the data directory. Names,
+		// sizes and timestamps only, never log contents.
+		//
+		// The LATERAL guard leaves the function uncalled when the logging
+		// collector is off, where log_directory need not exist and calling it
+		// would raise 58P01.
+		Name:        "log_directory",
+		ArchivePath: "postgresql/log_directory.tsv",
+		Query: `SELECT l.name, l.size, l.modification
+FROM (SELECT 1 WHERE current_setting('logging_collector')::bool) g,
+     LATERAL pg_ls_logdir() l
+ORDER BY l.modification DESC, l.name`,
+	},
+	{
 		Name:        "pg_hba_file_rules",
 		ArchivePath: "postgresql/pg_hba_file_rules.tsv",
 		Query:       "SELECT * FROM pg_hba_file_rules ORDER BY line_number",
@@ -581,6 +597,28 @@ WHERE datname = current_database()`,
 		Name:        "subscription_tables",
 		ArchivePath: "databases/%s/subscription_tables.tsv",
 		Query:       "SELECT * FROM pg_subscription_rel ORDER BY srsubid, srrelid",
+	},
+	{
+		// Ranked by freeze age, not size, because tables.tsv is capped at the
+		// largest 1000 and a small table can hold the wraparound horizon back.
+		// Includes pg_catalog and pg_toast relations, which tables.tsv excludes
+		// and which are common culprits. Narrow columns only: no size
+		// functions, so this stays cheap on an instance with many tables.
+		// relfrozenxid = 0 relations are left out, having no tuples of their own.
+		Name:        "table_freeze_age",
+		ArchivePath: "databases/%s/table_freeze_age.tsv",
+		Query: `SELECT n.nspname AS schemaname,
+       c.relname AS tablename,
+       c.relkind,
+       c.relpages,
+       age(c.relfrozenxid) AS relfrozenxid_age,
+       mxid_age(c.relminmxid) AS relminmxid_age
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE c.relkind IN ('r', 'm', 't')
+  AND c.relfrozenxid <> '0'::xid
+ORDER BY GREATEST(age(c.relfrozenxid), mxid_age(c.relminmxid)) DESC
+LIMIT 1000`,
 	},
 	{
 		Name:        "tables",

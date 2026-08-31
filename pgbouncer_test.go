@@ -76,6 +76,10 @@ func TestFilterPgBouncerINI(t *testing.T) {
 		"%include /etc/pgbouncer/extra.ini",
 	})
 
+	// No comment survives, so neither the prose header nor the commented-out
+	// [databases] entry appears at all.
+	assertAbsent(t, got, []string{"; PgBouncer configuration", "olddb"})
+
 	// pool_mode appears in both [users] and [pgbouncer]. The [users] one must
 	// be redacted, so exactly one unredacted occurrence may remain.
 	if n := strings.Count(got, "pool_mode = transaction"); n != 1 {
@@ -127,7 +131,7 @@ func TestFindPgBouncerDirSkipsWhenAbsent(t *testing.T) {
 	t.Cleanup(func() { pgBouncerConfigDirs = original })
 	pgBouncerConfigDirs = []string{filepath.Join(t.TempDir(), "no-pgbouncer-here")}
 
-	_, err := findPgBouncerDir()
+	_, err := findPgBouncerDir(&Config{})
 
 	var skipErr SkipError
 	if !errors.As(err, &skipErr) {
@@ -143,12 +147,38 @@ func TestFindPgBouncerDirPrefersFirstPresent(t *testing.T) {
 	t.Cleanup(func() { pgBouncerConfigDirs = original })
 	pgBouncerConfigDirs = []string{filepath.Join(dir, "absent"), dir}
 
-	got, err := findPgBouncerDir()
+	got, err := findPgBouncerDir(&Config{})
 	if err != nil {
 		t.Fatalf("findPgBouncerDir: %v", err)
 	}
 	if got != dir {
 		t.Errorf("got %q, want %q", got, dir)
+	}
+}
+
+// TestFindPgBouncerDirHonoursFlag verifies that -pgbouncer-conf replaces the
+// usual locations rather than adding to them, so a named path that is absent
+// reports itself instead of silently falling back to /etc.
+func TestFindPgBouncerDirHonoursFlag(t *testing.T) {
+	present := t.TempDir()
+	original := pgBouncerConfigDirs
+	t.Cleanup(func() { pgBouncerConfigDirs = original })
+	pgBouncerConfigDirs = []string{present}
+
+	named := t.TempDir()
+	got, err := findPgBouncerDir(&Config{PgBouncerConf: named})
+	if err != nil {
+		t.Fatalf("findPgBouncerDir with a named directory: %v", err)
+	}
+	if got != named {
+		t.Errorf("got %q, want the named directory %q", got, named)
+	}
+
+	// A named directory that does not exist must not fall back to the defaults.
+	_, err = findPgBouncerDir(&Config{PgBouncerConf: filepath.Join(named, "absent")})
+	var skipErr SkipError
+	if !errors.As(err, &skipErr) {
+		t.Fatalf("err = %v, want SkipError for an absent named directory", err)
 	}
 }
 
@@ -177,11 +207,10 @@ func TestPgBouncerCollectorsRegistered(t *testing.T) {
 	}
 }
 
-// TestFilterPgBouncerINIRedactsCommentedOutSettings verifies that a commented-out
-// setting is redacted wherever it appears, including inside [pgbouncer]. A
-// commented-out connection string carries a password as readily as a live one,
-// and prose comments carry no value to redact, so they survive.
-func TestFilterPgBouncerINIRedactsCommentedOutSettings(t *testing.T) {
+// TestFilterPgBouncerINIDropsAllComments verifies that no comment reaches the
+// archive, wherever it appears. A commented-out connection string carries a
+// password as readily as a live one, so none is kept.
+func TestFilterPgBouncerINIDropsAllComments(t *testing.T) {
 	ini := `; PgBouncer configuration
 [pgbouncer]
 listen_port = 6432
@@ -194,9 +223,7 @@ listen_port = 6432
 	}
 	got := buf.String()
 
-	assertAbsent(t, got, []string{"comment-secret-value", "hash-secret-value"})
-	assertPresent(t, got, []string{
-		"; PgBouncer configuration", // prose comment, nothing to redact
-		"listen_port = 6432",        // live [pgbouncer] setting still ships
-	})
+	// Every comment is gone, secret or not, so nothing beginning ; or # remains.
+	assertAbsent(t, got, []string{"comment-secret-value", "hash-secret-value", ";", "#"})
+	assertPresent(t, got, []string{"listen_port = 6432"})
 }

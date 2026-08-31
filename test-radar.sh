@@ -102,6 +102,11 @@ validate_pgbouncer() {
 		echo -e "${RED}✗ $scenario FAILED: pgbouncer.ini lost its section headers${NC}"
 		return 1
 	fi
+	# No comment reaches the archive, so the fixture's header comment is gone.
+	if echo "$ini" | grep -qE "^[[:space:]]*[;#]"; then
+		echo -e "${RED}✗ $scenario FAILED: pgbouncer.ini still contains comments${NC}"
+		return 1
+	fi
 
 	if ! unzip -p "$zip_file" "pgbouncer/files.tsv" 2>/dev/null | grep -q "userlist.txt"; then
 		echo -e "${RED}✗ $scenario FAILED: pgbouncer/files.tsv does not record userlist.txt${NC}"
@@ -121,31 +126,23 @@ validate_pgbouncer() {
 	return 0
 }
 
-# Verifies the log directory listing. It carries names, sizes and timestamps
-# only, never log contents. $PGDATA is mode 0700 and owned by postgres, so the
-# root scenarios can list it and the non-root ones must skip it cleanly.
+# Verifies the log directory listing, which comes from pg_ls_logdir(). That is
+# executable by pg_monitor and needs no filesystem access, so every scenario
+# gets it, including the non-root ones that cannot traverse $PGDATA. It carries
+# names, sizes and timestamps only, never log contents.
 validate_log_directory() {
 	local zip_file="$1"
 	local scenario="$2"
-	local can_read="$3"  # "yes" or "no"
 
 	local listing
 	listing=$(unzip -p "$zip_file" "postgresql/log_directory.tsv" 2>/dev/null || true)
-
-	if [ "$can_read" = "no" ]; then
-		if [ -n "$listing" ]; then
-			echo -e "${RED}✗ $scenario FAILED: log directory listed despite no rights on the path${NC}"
-			return 1
-		fi
-		return 0
-	fi
 
 	if [ -z "$listing" ]; then
 		echo -e "${RED}✗ $scenario FAILED: postgresql/log_directory.tsv missing${NC}"
 		return 1
 	fi
 
-	if ! echo "$listing" | head -1 | grep -q "^directory.filename.size_bytes.modified$"; then
+	if ! echo "$listing" | head -1 | grep -q "^name.size.modification$"; then
 		echo -e "${RED}✗ $scenario FAILED: unexpected log_directory.tsv header${NC}"
 		return 1
 	fi
@@ -158,6 +155,39 @@ validate_log_directory() {
 	# Names only: nothing from a log body may appear.
 	if echo "$listing" | grep -qE "LOG:|FATAL:|database system is ready"; then
 		echo -e "${RED}✗ $scenario FAILED: log_directory.tsv contains log file contents${NC}"
+		return 1
+	fi
+
+	return 0
+}
+
+# Verifies the dedicated freeze-age listing. It is ranked by age rather than
+# size, so it must reach relations tables.tsv excludes: pg_catalog and pg_toast.
+validate_freeze_age_file() {
+	local zip_file="$1"
+	local scenario="$2"
+
+	local tsv
+	tsv=$(unzip -p "$zip_file" "databases/testdb/table_freeze_age.tsv" 2>/dev/null || true)
+
+	if [ -z "$tsv" ]; then
+		echo -e "${RED}✗ $scenario FAILED: databases/testdb/table_freeze_age.tsv missing${NC}"
+		return 1
+	fi
+
+	if ! echo "$tsv" | head -1 | grep -q "^schemaname.tablename.relkind.relpages.relfrozenxid_age.relminmxid_age$"; then
+		echo -e "${RED}✗ $scenario FAILED: unexpected table_freeze_age.tsv header${NC}"
+		return 1
+	fi
+
+	# Every row carries a numeric age, and the partitioned parent is excluded
+	# because its relfrozenxid is 0.
+	if ! echo "$tsv" | tail -n +2 | awk -F'\t' '$5 ~ /^[0-9]+$/ {n++} END {exit !(n>0)}'; then
+		echo -e "${RED}✗ $scenario FAILED: table_freeze_age.tsv has no numeric ages${NC}"
+		return 1
+	fi
+	if echo "$tsv" | tail -n +2 | awk -F'\t' '$2 == "part_parent" {found=1} END {exit !found}'; then
+		echo -e "${RED}✗ $scenario FAILED: partitioned parent should be excluded (relfrozenxid = 0)${NC}"
 		return 1
 	fi
 
@@ -247,9 +277,11 @@ validate_zip() {
 		return 1
 	fi
 
-	# require_system is "yes" for the scenarios running as root, which are the
-	# same ones that can traverse $PGDATA to reach the log directory.
-	if ! validate_log_directory "$zip_file" "$scenario" "$require_system"; then
+	if ! validate_freeze_age_file "$zip_file" "$scenario"; then
+		return 1
+	fi
+
+	if ! validate_log_directory "$zip_file" "$scenario"; then
 		return 1
 	fi
 

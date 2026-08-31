@@ -92,7 +92,7 @@ psql -c "GRANT pg_monitor TO radaruser;"
 PGPASSWORD='secure_password' ./radar -d mydatabase -U radaruser
 ```
 
-Note: a `pg_monitor` role reaches nearly everything, and anything it cannot read is skipped rather than failed, so the run still completes. Expect a few replication catalog views and `pg_hba_file_rules` to be missing, though `pg_hba.conf` itself is still collected from the filesystem.
+Note: a `pg_monitor` role reaches nearly everything. Expect a few replication catalog views and `pg_hba_file_rules` to be missing, and a permission denial on those to be reported per collector; the run still completes and writes an archive. `pg_hba.conf` itself is still collected from the filesystem.
 
 **Limited Permissions**: radar can run as a non-root user with limited PostgreSQL permissions. Some system collectors will be skipped, and some PostgreSQL catalog queries may fail gracefully.
 
@@ -127,6 +127,8 @@ Options:
     	comma-separated default-disabled task names to enable (e.g. pgstattuple, disabled by default)
   -p int
     	database port (default 5432)
+  -pgbouncer-conf string
+    	PgBouncer configuration directory (default: /etc/pgbouncer, /usr/local/etc/pgbouncer)
   -skip-postgres
     	skip PostgreSQL data collection
   -skip-system
@@ -196,11 +198,11 @@ For a complete reference of all collected data, see [docs/data.md](docs/data.md)
 - **Progress tracking**: `pg_stat_progress_analyze`, `pg_stat_progress_basebackup`, `pg_stat_progress_cluster`, `pg_stat_progress_copy`, `pg_stat_progress_create_index`, `pg_stat_progress_vacuum`
 - **Catalog**: `pg_available_extension_versions`, `pg_database` (incl. `datfrozenxid`/`datminmxid` wraparound headroom and `datconnlimit`), `pg_database_size()`, `pg_roles`, `pg_tablespace_size()`, `version()`
 - **Control file**: `pg_control_checkpoint()`, `pg_control_init()`, `pg_control_recovery()`, `pg_control_system()` (the `pg_controldata` content, read as SQL)
-- **Log directory**: listing of `log_directory` resolved against the data directory, with per-file name, size and modification time. Names only, never log contents
+- **Log directory**: `pg_ls_logdir()`, with per-file name, size and modification time. Names only, never log contents
 
 **Per-Database**
 
-- **Schema objects**: `pg_class` + `pg_stat_all_tables` (tables incl. dead-tup counters, vacuum/analyze timestamps, per-table `relfrozenxid`/`relminmxid` freeze ages, `reloptions`, `reltoastrelid`, `relpersistence`), `pg_index` + `pg_stat_all_indexes` (indexes incl. validity, scan counters, size), `pg_namespace`, `pg_operator`, `pg_sequences`, `pg_type`
+- **Schema objects**: `pg_class` + `pg_stat_all_tables` (tables incl. dead-tup counters, vacuum/analyze timestamps, per-table `relfrozenxid`/`relminmxid` freeze ages, `reloptions`, `reltoastrelid`, `relpersistence`), plus a dedicated freeze-age listing ranked by age rather than size so a small table near the wraparound threshold is not missed, `pg_index` + `pg_stat_all_indexes` (indexes incl. validity, scan counters, size), `pg_namespace`, `pg_operator`, `pg_sequences`, `pg_type`
 - **Functions & procedures**: `pg_proc`
 - **Triggers & partitioning**: `pg_inherits`, `pg_partitioned_table`, `pg_trigger`
 - **Logical replication**: `pg_publication`, `pg_publication_tables`, `pg_subscription_rel`
@@ -214,7 +216,7 @@ For a complete reference of all collected data, see [docs/data.md](docs/data.md)
 
 **[PgBouncer](https://www.pgbouncer.org/)** (if installed)
 
-- **Pooler configuration**: the `[pgbouncer]` section of `pgbouncer.ini`, plus a listing of the configuration directory. Values outside `[pgbouncer]` are removed, because `[databases]` connection strings routinely contain `password=`. `userlist.txt` is recorded as a directory entry only: it holds credentials and its contents are never collected
+- **Pooler configuration**: the `[pgbouncer]` section of `pgbouncer.ini`, plus a listing of the configuration directory. Values outside `[pgbouncer]` are removed, because `[databases]` connection strings routinely contain `password=`, and comments are dropped entirely. `userlist.txt` is recorded as a directory entry only: it holds credentials and its contents are never collected. Use `-pgbouncer-conf` for a configuration directory outside the usual locations
 
 **[Spock](https://github.com/pgEdge/spock) Extension** (if present)
 

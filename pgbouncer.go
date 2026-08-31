@@ -40,37 +40,40 @@ func getPgBouncerTasks() []CollectionTask {
 			Category:    "system",
 			Name:        "pgbouncer.ini",
 			ArchivePath: "pgbouncer/pgbouncer.ini",
-			Collector: func(cfg *Config, w io.Writer) error {
-				return collectPgBouncerINI(w)
-			},
+			Collector:   collectPgBouncerINI,
 		},
 		{
 			Category:    "system",
 			Name:        "pgbouncer_files",
 			ArchivePath: "pgbouncer/files.tsv",
-			Collector: func(cfg *Config, w io.Writer) error {
-				return collectPgBouncerFiles(w)
-			},
+			Collector:   collectPgBouncerFiles,
 		},
 	}
 }
 
-// findPgBouncerDir returns the first candidate configuration directory that
-// exists. Absence means PgBouncer is not installed, which is most hosts, and is
-// a skip rather than a failure.
-func findPgBouncerDir() (string, error) {
-	for _, dir := range pgBouncerConfigDirs {
+// findPgBouncerDir returns the configuration directory named by -pgbouncer-conf,
+// or the first of the usual locations that exists. A named directory is used as
+// given, so a wrong path reports itself rather than falling back silently.
+// Absence means PgBouncer is not installed, which is most hosts, and is a skip
+// rather than a failure.
+func findPgBouncerDir(cfg *Config) (string, error) {
+	dirs := pgBouncerConfigDirs
+	if cfg.PgBouncerConf != "" {
+		dirs = []string{cfg.PgBouncerConf}
+	}
+
+	for _, dir := range dirs {
 		if info, err := os.Stat(dir); err == nil && info.IsDir() {
 			return dir, nil
 		}
 	}
-	return "", NewSkipError("PgBouncer is not installed")
+	return "", NewSkipError(fmt.Sprintf("no PgBouncer configuration directory in %v", dirs))
 }
 
 // collectPgBouncerINI writes the PgBouncer configuration with every value
 // outside the [pgbouncer] section removed.
-func collectPgBouncerINI(w io.Writer) error {
-	dir, err := findPgBouncerDir()
+func collectPgBouncerINI(cfg *Config, w io.Writer) error {
+	dir, err := findPgBouncerDir(cfg)
 	if err != nil {
 		return err
 	}
@@ -90,10 +93,10 @@ func collectPgBouncerINI(w io.Writer) error {
 // them. Every other section is treated the same way, so a section radar has not
 // vetted is not shipped verbatim just because it is new.
 //
-// A commented-out setting is redacted wherever it appears, [pgbouncer] included,
-// because a commented-out connection string carries a password as readily as a
-// live one. A prose comment has no value to redact and survives, as does an
-// %include line, which names a file radar does not follow.
+// Comments are dropped entirely, wherever they appear. A commented-out
+// connection string carries a password as readily as a live one, and no comment
+// is worth the trouble of deciding which ones are safe. An %include line is not
+// a comment and is kept, naming a file radar does not follow.
 func filterPgBouncerINI(data []byte, w io.Writer) error {
 	shipValues := false
 
@@ -103,10 +106,12 @@ func filterPgBouncerINI(data []byte, w io.Writer) error {
 		trimmed := strings.TrimSpace(line)
 
 		switch {
+		case isINIComment(trimmed):
+			continue
 		case strings.HasPrefix(trimmed, "["):
 			name, _, closed := strings.Cut(strings.TrimPrefix(trimmed, "["), "]")
 			shipValues = closed && strings.EqualFold(strings.TrimSpace(name), "pgbouncer")
-		case !shipValues || isINIComment(trimmed):
+		case !shipValues:
 			if key, _, found := strings.Cut(line, "="); found {
 				line = key + "= " + redactedValue
 			}
@@ -129,8 +134,8 @@ func isINIComment(trimmed string) bool {
 // collectPgBouncerFiles lists the PgBouncer configuration directory. This is how
 // userlist.txt is recorded: that it is there, how large it is and when it last
 // changed, never its contents, which are credentials.
-func collectPgBouncerFiles(w io.Writer) error {
-	dir, err := findPgBouncerDir()
+func collectPgBouncerFiles(cfg *Config, w io.Writer) error {
+	dir, err := findPgBouncerDir(cfg)
 	if err != nil {
 		return err
 	}

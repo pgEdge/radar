@@ -168,10 +168,9 @@ func TestPostgreSQLTasksStructure(t *testing.T) {
 	}
 }
 
-// TestPGQueryCollectorUnavailableAsSkip verifies that PG errors for objects
-// radar cannot reach (missing extension, or an existing object the collecting
-// role has no rights on) are returned as SkipError, while real errors are
-// returned as-is.
+// TestPGQueryCollectorUnavailableAsSkip verifies that PG errors for missing
+// extensions (undefined_table/function/object, invalid_schema) are returned
+// as SkipError, while real errors (permission denied) are returned as-is.
 func TestPGQueryCollectorUnavailableAsSkip(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -182,7 +181,7 @@ func TestPGQueryCollectorUnavailableAsSkip(t *testing.T) {
 		{"undefined_function is skip", &pgconn.PgError{Code: "42883", Message: "function does not exist"}, true},
 		{"undefined_object is skip", &pgconn.PgError{Code: "42704", Message: "type does not exist"}, true},
 		{"invalid_schema is skip", &pgconn.PgError{Code: "3F000", Message: "schema \"pgstatviz\" does not exist"}, true},
-		{"insufficient_privilege is skip", &pgconn.PgError{Code: "42501", Message: "permission denied for schema spock"}, true},
+		{"permission_denied is real error", &pgconn.PgError{Code: "42501", Message: "permission denied"}, false},
 		{"syntax_error is real error", &pgconn.PgError{Code: "42601", Message: "syntax error"}, false},
 	}
 	for _, tt := range tests {
@@ -213,31 +212,6 @@ func writeFixture(t *testing.T, path, contents string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
 		t.Fatalf("writing fixture %s: %v", path, err)
-	}
-}
-
-// makeLogDir builds a data directory with a log subdirectory holding one log
-// file, and returns both paths.
-func makeLogDir(t *testing.T, contents string) (dataDir, logDir string) {
-	t.Helper()
-	dataDir = t.TempDir()
-	logDir = filepath.Join(dataDir, "log")
-	if err := os.Mkdir(logDir, 0o700); err != nil {
-		t.Fatalf("creating fixture log directory: %v", err)
-	}
-	writeFixture(t, filepath.Join(logDir, "postgresql.log"), contents)
-	return dataDir, logDir
-}
-
-// assertListsLogFile checks that a listing resolved to dir and names the log
-// file inside it.
-func assertListsLogFile(t *testing.T, listing, dir string) {
-	t.Helper()
-	if !strings.Contains(listing, "postgresql.log") {
-		t.Errorf("listing does not name the log file: %q", listing)
-	}
-	if !strings.Contains(listing, dir) {
-		t.Errorf("listing does not resolve to %q: %q", dir, listing)
 	}
 }
 
@@ -337,76 +311,5 @@ func TestWriteDirListingTSVUnreadableIsSkip(t *testing.T) {
 	}
 	if buf.Len() != 0 {
 		t.Errorf("wrote %d bytes for an unreadable directory, want 0", buf.Len())
-	}
-}
-
-// TestCollectLogDirectory verifies that log_directory is resolved against the
-// data directory when relative, and used as given when absolute.
-func TestCollectLogDirectory(t *testing.T) {
-	dataDir, logDir := makeLogDir(t, "x")
-
-	tests := []struct {
-		name    string
-		setting string
-		cfg     *Config
-		// showDataDir is true when the collector is expected to ask the server
-		// for the data directory.
-		showDataDir bool
-	}{
-		{"relative setting resolves against the data directory", "log", &Config{}, true},
-		{"relative setting uses the configured data directory", "log", &Config{DataDir: dataDir}, false},
-		{"absolute setting is used as given", logDir, &Config{}, false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			db, mock, err := sqlmock.New()
-			if err != nil {
-				t.Fatalf("failed to create mock: %v", err)
-			}
-			defer closeErrCheck(db, "mock database")
-
-			mock.ExpectQuery("SHOW log_directory").
-				WillReturnRows(sqlmock.NewRows([]string{"log_directory"}).AddRow(tt.setting))
-			if tt.showDataDir {
-				mock.ExpectQuery("SHOW data_directory").
-					WillReturnRows(sqlmock.NewRows([]string{"data_directory"}).AddRow(dataDir))
-			}
-
-			var buf bytes.Buffer
-			if err := collectLogDirectory(db, tt.cfg, &buf); err != nil {
-				t.Fatalf("collectLogDirectory: %v", err)
-			}
-
-			assertListsLogFile(t, buf.String(), logDir)
-			if err := mock.ExpectationsWereMet(); err != nil {
-				t.Errorf("unmet sqlmock expectations: %v", err)
-			}
-		})
-	}
-}
-
-// TestCollectLogDirectoryNeverReadsContents verifies the listing carries file
-// names and sizes only. Log bodies are far larger than anything else in an
-// archive and carry query text and error detail beyond what the rest holds.
-func TestCollectLogDirectoryNeverReadsContents(t *testing.T) {
-	const secret = "FATAL: password authentication failed for user hunter2"
-	_, logDir := makeLogDir(t, secret)
-
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatalf("failed to create mock: %v", err)
-	}
-	defer closeErrCheck(db, "mock database")
-	mock.ExpectQuery("SHOW log_directory").
-		WillReturnRows(sqlmock.NewRows([]string{"log_directory"}).AddRow(logDir))
-
-	var buf bytes.Buffer
-	if err := collectLogDirectory(db, &Config{}, &buf); err != nil {
-		t.Fatalf("collectLogDirectory: %v", err)
-	}
-
-	if strings.Contains(buf.String(), "hunter2") {
-		t.Errorf("listing leaked log file contents: %q", buf.String())
 	}
 }

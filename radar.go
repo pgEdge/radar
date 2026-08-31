@@ -111,16 +111,17 @@ const (
 // Config holds connection parameters and collection settings
 type Config struct {
 	// PostgreSQL connection
-	Host        string
-	Port        int
-	Database    string
-	Username    string
-	Password    string
-	DataDir     string
-	SSLMode     string
-	SSLCert     string
-	SSLKey      string
-	SSLRootCert string
+	Host          string
+	Port          int
+	Database      string
+	Username      string
+	Password      string
+	DataDir       string
+	PgBouncerConf string
+	SSLMode       string
+	SSLCert       string
+	SSLKey        string
+	SSLRootCert   string
 
 	// Database connection (injected)
 	DB *sql.DB
@@ -337,6 +338,7 @@ func parseConfig() (*Config, error) {
 	flag.StringVar(&cfg.Database, "d", "", "database name")
 	flag.StringVar(&cfg.Username, "U", "", "database user")
 	flag.StringVar(&cfg.DataDir, "data-dir", "", "PostgreSQL data directory")
+	flag.StringVar(&cfg.PgBouncerConf, "pgbouncer-conf", "", "PgBouncer configuration directory (default: /etc/pgbouncer, /usr/local/etc/pgbouncer)")
 	flag.StringVar(&cfg.SSLMode, "sslmode", "prefer", "SSL mode (prefer, disable, require, verify-ca, verify-full)")
 	flag.StringVar(&cfg.SSLCert, "sslcert", "", "client SSL certificate file")
 	flag.StringVar(&cfg.SSLKey, "sslkey", "", "client SSL key file")
