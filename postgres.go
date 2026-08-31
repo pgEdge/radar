@@ -186,14 +186,14 @@ type dbConns struct {
 // the connection to the database collection has left behind. The database radar
 // was invoked against is served by the connection opened at startup.
 func (c *dbConns) conn(cfg *Config, dbname string) (*sql.DB, error) {
+	if c.db != nil && dbname == c.name {
+		return c.db, nil
+	}
+	// A different database, so the held connection is finished with.
+	closeErrCheck(c, "database connection")
+
 	if dbname == cfg.Database && cfg.DB != nil {
 		return cfg.DB, nil
-	}
-	if c.db != nil {
-		if dbname == c.name {
-			return c.db, nil
-		}
-		closeErrCheck(c, "database connection")
 	}
 
 	db, err := sql.Open("pgx", cfg.ConnectionString(dbname))

@@ -265,6 +265,42 @@ func TestDBConnsReusesOneConnectionPerDatabase(t *testing.T) {
 	}
 }
 
+// TestDBConnsClosesWhenCollectionReachesTheStartupDatabase covers the ordering
+// where the database radar was invoked against is collected after another one.
+// The startup connection serves it, and the connection to the database just
+// finished must not be left open while it does.
+func TestDBConnsClosesWhenCollectionReachesTheStartupDatabase(t *testing.T) {
+	initial, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create mock: %v", err)
+	}
+	defer closeErrCheck(initial, "mock database")
+
+	cfg := &Config{Host: "127.0.0.1", Port: 1, Database: "postgres",
+		Username: "radar", SSLMode: "disable", DB: initial}
+	conns := &dbConns{}
+
+	held, err := conns.conn(cfg, "mydb")
+	if err != nil {
+		t.Fatalf("conn(mydb): %v", err)
+	}
+
+	got, err := conns.conn(cfg, "postgres")
+	if err != nil {
+		t.Fatalf("conn(postgres): %v", err)
+	}
+	if got != initial {
+		t.Error("the startup database opened a second connection")
+	}
+	if err := held.Ping(); err == nil || !strings.Contains(err.Error(), "closed") {
+		t.Errorf("connection to the finished database left open: Ping = %v", err)
+	}
+
+	if err := conns.Close(); err != nil {
+		t.Errorf("Close: %v", err)
+	}
+}
+
 // writeFixture creates a file holding contents, failing the test if it cannot.
 func writeFixture(t *testing.T, path, contents string) {
 	t.Helper()
