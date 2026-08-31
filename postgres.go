@@ -111,16 +111,17 @@ func collectPGConfigFile(db *sql.DB, cfg *Config, filename string, w io.Writer) 
 	return err
 }
 
-// generateDatabaseTasks creates per-database collection tasks
-func generateDatabaseTasks(db *sql.DB) ([]CollectionTask, error) {
+// generateDatabaseTasks creates per-database collection tasks, returning the
+// closer for the connection they share.
+func generateDatabaseTasks(db *sql.DB) ([]CollectionTask, io.Closer, error) {
 	if db == nil {
-		return nil, fmt.Errorf("PostgreSQL not initialized")
+		return nil, nil, fmt.Errorf("PostgreSQL not initialized")
 	}
 
 	// Get list of databases
 	rows, err := db.Query("SELECT datname FROM pg_database WHERE datallowconn ORDER BY datname")
 	if err != nil {
-		return nil, fmt.Errorf("querying databases: %w", err)
+		return nil, nil, fmt.Errorf("querying databases: %w", err)
 	}
 	defer closeErrCheck(rows, "database list query rows")
 
@@ -128,7 +129,7 @@ func generateDatabaseTasks(db *sql.DB) ([]CollectionTask, error) {
 	for rows.Next() {
 		var dbname string
 		if err := rows.Scan(&dbname); err != nil {
-			return nil, fmt.Errorf("scanning database name: %w", err)
+			return nil, nil, fmt.Errorf("scanning database name: %w", err)
 		}
 		// Always skip template0 and template1
 		if dbname == "template0" || dbname == "template1" {
@@ -138,11 +139,12 @@ func generateDatabaseTasks(db *sql.DB) ([]CollectionTask, error) {
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterating databases: %w", err)
+		return nil, nil, fmt.Errorf("iterating databases: %w", err)
 	}
 
 	// Generate tasks for each database
 	var tasks []CollectionTask
+	conns := &dbConns{}
 	allDBTasks := make([]SimpleQueryTask, 0,
 		len(perDatabaseQueryTasks)+len(pgStatvizQueryTasks)+len(spockQueryTasks))
 	allDBTasks = append(allDBTasks, perDatabaseQueryTasks...)
@@ -162,22 +164,64 @@ func generateDatabaseTasks(db *sql.DB) ([]CollectionTask, error) {
 				Name:        fmt.Sprintf("%s/%s", dbName, td.Name),
 				ArchivePath: fmt.Sprintf(td.ArchivePath, dbName),
 				Collector: func(cfg *Config, w io.Writer) error {
-					return execPGQueryOnDB(dbName, cfg, td.Query, w)
+					return conns.exec(cfg, dbName, td.Query, w)
 				},
 			})
 		}
 	}
 
-	return tasks, nil
+	return tasks, conns, nil
 }
 
-// execPGQueryOnDB executes a query on a specific database
-func execPGQueryOnDB(dbname string, cfg *Config, query string, w io.Writer) error {
+// dbConns holds the connection the per-database tasks share. They are generated
+// and run grouped by database, so holding one connection and closing it when
+// collection moves on costs one connect and one authentication per database
+// rather than one per task.
+type dbConns struct {
+	db   *sql.DB
+	name string
+}
+
+// conn returns the connection for dbname, opening one on first use and closing
+// the connection to the database collection has left behind. The database radar
+// was invoked against is served by the connection opened at startup.
+func (c *dbConns) conn(cfg *Config, dbname string) (*sql.DB, error) {
+	if dbname == cfg.Database && cfg.DB != nil {
+		return cfg.DB, nil
+	}
+	if c.db != nil {
+		if dbname == c.name {
+			return c.db, nil
+		}
+		closeErrCheck(c, "database connection")
+	}
+
 	db, err := sql.Open("pgx", cfg.ConnectionString(dbname))
 	if err != nil {
-		return fmt.Errorf("connecting to %s: %w", dbname, err)
+		return nil, fmt.Errorf("connecting to %s: %w", dbname, err)
 	}
-	defer closeErrCheck(db, "database connection")
+	// Collectors run one at a time, so one connection is all the pool needs.
+	db.SetMaxOpenConns(1)
+	c.db, c.name = db, dbname
+	return db, nil
+}
+
+// Close closes the connection the per-database tasks were sharing.
+func (c *dbConns) Close() error {
+	if c.db == nil {
+		return nil
+	}
+	db := c.db
+	c.db, c.name = nil, ""
+	return db.Close()
+}
+
+// exec executes a query on a specific database
+func (c *dbConns) exec(cfg *Config, dbname, query string, w io.Writer) error {
+	db, err := c.conn(cfg, dbname)
+	if err != nil {
+		return err
+	}
 
 	rows, err := db.Query(query)
 	if err != nil {

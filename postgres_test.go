@@ -207,6 +207,64 @@ func TestPGQueryCollectorUnavailableAsSkip(t *testing.T) {
 	}
 }
 
+// TestDBConnsReusesOneConnectionPerDatabase pins the connection budget: the
+// startup connection serves its own database, every task on another database
+// shares one connection, and that connection is closed when collection moves on
+// to the next database.
+func TestDBConnsReusesOneConnectionPerDatabase(t *testing.T) {
+	initial, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create mock: %v", err)
+	}
+	defer closeErrCheck(initial, "mock database")
+
+	// Nothing listens on port 1, and nothing needs to: sql.Open parses the
+	// connection string without contacting the server.
+	cfg := &Config{Host: "127.0.0.1", Port: 1, Database: "postgres",
+		Username: "radar", SSLMode: "disable", DB: initial}
+	conns := &dbConns{}
+
+	got, err := conns.conn(cfg, "postgres")
+	if err != nil {
+		t.Fatalf("conn(postgres): %v", err)
+	}
+	if got != initial {
+		t.Error("the startup database opened a second connection")
+	}
+
+	first, err := conns.conn(cfg, "mydb")
+	if err != nil {
+		t.Fatalf("conn(mydb): %v", err)
+	}
+	again, err := conns.conn(cfg, "mydb")
+	if err != nil {
+		t.Fatalf("conn(mydb) again: %v", err)
+	}
+	if again != first {
+		t.Error("a second task on the same database opened another connection")
+	}
+
+	last, err := conns.conn(cfg, "otherdb")
+	if err != nil {
+		t.Fatalf("conn(otherdb): %v", err)
+	}
+	// database/sql reports "sql: database is closed" once the pool is closed.
+	if err := first.Ping(); err == nil || !strings.Contains(err.Error(), "closed") {
+		t.Errorf("previous database's connection left open: Ping = %v", err)
+	}
+
+	if err := conns.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if err := last.Ping(); err == nil || !strings.Contains(err.Error(), "closed") {
+		t.Errorf("last database's connection left open: Ping = %v", err)
+	}
+	// Collection closes whether or not a second database was ever opened.
+	if err := conns.Close(); err != nil {
+		t.Errorf("Close with nothing held: %v", err)
+	}
+}
+
 // writeFixture creates a file holding contents, failing the test if it cannot.
 func writeFixture(t *testing.T, path, contents string) {
 	t.Helper()

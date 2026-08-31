@@ -280,6 +280,7 @@ radar-hostname-20260115-133700.zip
 
 - Data streams directly to ZIP file without buffering in memory
 - Sequential execution with minimal memory footprint
+- One connection per database, reused across all of that database's queries
 - Complete collection typically takes seconds
 
 ## Author

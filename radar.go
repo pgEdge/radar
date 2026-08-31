@@ -543,10 +543,11 @@ func collectAll(cfg *Config, zipWriter *zip.Writer) int {
 	if !cfg.SkipPostgres {
 		// Pass cfg.DB to PostgreSQL task generators
 		pgTasks = append(pgTasks, getPostgreSQLTasks(cfg.DB)...)
-		dbTasks, err := generateDatabaseTasks(cfg.DB)
+		dbTasks, conns, err := generateDatabaseTasks(cfg.DB)
 		if err != nil {
 			errorLog.Printf("Failed to generate database tasks: %v", err)
 		} else {
+			defer closeErrCheck(conns, "database connection")
 			pgTasks = append(pgTasks, dbTasks...)
 		}
 	}

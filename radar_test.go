@@ -821,10 +821,11 @@ func TestGenerateDatabaseTasksRegistersAllRegistries(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"datname"}).
 			AddRow("mydb").AddRow("template0").AddRow("template1"))
 
-	tasks, err := generateDatabaseTasks(db)
+	tasks, conns, err := generateDatabaseTasks(db)
 	if err != nil {
 		t.Fatalf("generateDatabaseTasks: %v", err)
 	}
+	defer closeErrCheck(conns, "database connection")
 
 	paths := archivePathsByName(t, tasks)
 

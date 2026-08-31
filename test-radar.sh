@@ -1,10 +1,12 @@
 #!/bin/bash
 # Test script for radar in a Debian container with PostgreSQL 18
-# Tests all 4 permission scenarios:
+# Tests all 6 scenarios:
 # 1. Root + superuser
 # 2. Root + pg_monitor
 # 3. Non-root + superuser
 # 4. Non-root + pg_monitor
+# 5. Certificate authentication
+# 6. GSSAPI/Kerberos authentication
 
 set -e
 
@@ -243,6 +245,30 @@ validate_freeze_age() {
 	return 0
 }
 
+# Total sessions ever opened to this instance, from the cumulative counter in
+# pg_stat_database.
+count_sessions() {
+	su - postgres -c "/usr/lib/postgresql/18/bin/psql -Atqc 'SELECT sum(sessions) FROM pg_stat_database'"
+}
+
+# Verifies the connection budget. Every database contributes tens of queries, so
+# a connection per query would be a connect and authentication storm on an
+# instance holding many databases. Expected here is 2: one to the instance, and
+# one to postgres, since testdb reuses the instance connection.
+validate_session_count() {
+	local before="$1"
+	local scenario="$2"
+	# The psql call reading the total opens a session of its own, hence the -1.
+	local used=$(( $(count_sessions) - before - 1 ))
+
+	echo "  Sessions opened: $used"
+	if [ "$used" -gt 10 ]; then
+		echo -e "${RED}✗ $scenario FAILED: opened $used sessions, expected at most 10${NC}"
+		return 1
+	fi
+	return 0
+}
+
 # Helper function to validate ZIP contents
 validate_zip() {
 	local zip_file="$1"
@@ -304,7 +330,11 @@ echo ""
 echo "========================================"
 echo -e "${YELLOW}Scenario 1: Root + superuser${NC}"
 echo "========================================"
+SESSIONS_BEFORE=$(count_sessions)
 ./radar -h localhost -d testdb -U postgres -vv
+if ! validate_session_count "$SESSIONS_BEFORE" "Scenario 1"; then
+	exit 1
+fi
 ZIP1=$(ls -t radar-*.zip | head -1)
 if ! validate_zip "$ZIP1" "Scenario 1" "yes"; then
 	exit 1
