@@ -174,11 +174,12 @@ func TestFindPgBouncerDirHonoursFlag(t *testing.T) {
 		t.Errorf("got %q, want the named directory %q", got, named)
 	}
 
-	// A named directory that does not exist must not fall back to the defaults.
+	// A named directory that does not exist is a failure, not a skip: the
+	// operator said where to look, so falling quiet would hide the typo.
 	_, err = findPgBouncerDir(&Config{PgBouncerConf: filepath.Join(named, "absent")})
 	var skipErr SkipError
-	if !errors.As(err, &skipErr) {
-		t.Fatalf("err = %v, want SkipError for an absent named directory", err)
+	if err == nil || errors.As(err, &skipErr) {
+		t.Fatalf("err = %v, want a plain error for an absent named directory", err)
 	}
 }
 

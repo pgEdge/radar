@@ -185,8 +185,8 @@ ORDER BY datname`,
 		Name:        "log_directory",
 		ArchivePath: "postgresql/log_directory.tsv",
 		Query: `SELECT l.name, l.size, l.modification
-FROM (SELECT 1 WHERE current_setting('logging_collector')::bool) g,
-     LATERAL pg_ls_logdir() l
+FROM pg_ls_logdir() l
+WHERE current_setting('logging_collector')::bool
 ORDER BY l.modification DESC, l.name`,
 	},
 	{
@@ -606,7 +606,6 @@ WHERE datname = current_database()`,
 		// Includes pg_catalog and pg_toast relations, which tables.tsv excludes
 		// and which are common culprits. Narrow columns only: no size
 		// functions, so this stays cheap on an instance with many tables.
-		// relfrozenxid = 0 relations are left out, having no tuples of their own.
 		Name:        "table_freeze_age",
 		ArchivePath: "databases/%s/table_freeze_age.tsv",
 		Query: `SELECT n.nspname AS schemaname,
@@ -618,7 +617,6 @@ WHERE datname = current_database()`,
 FROM pg_class c
 JOIN pg_namespace n ON n.oid = c.relnamespace
 WHERE c.relkind IN ('r', 'm', 't')
-  AND c.relfrozenxid <> '0'::xid
 ORDER BY GREATEST(age(c.relfrozenxid), mxid_age(c.relminmxid)) DESC
 LIMIT 1000`,
 	},

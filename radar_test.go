@@ -566,8 +566,7 @@ var queryColumnChecks = []struct {
 		// wraparound threshold is included. Reaches pg_catalog and pg_toast,
 		// which tables.tsv excludes.
 		"age(c.relfrozenxid)", "mxid_age(c.relminmxid)",
-		"GREATEST", "c.relfrozenxid <> '0'::xid", "LIMIT 1000",
-		"'r', 'm', 't'",
+		"GREATEST", "LIMIT 1000", "'r', 'm', 't'",
 	}},
 	{perDatabaseQueryTasks, "tables", []string{
 		"n_live_tup", "n_dead_tup", "last_autovacuum", "last_analyze",
@@ -594,7 +593,7 @@ var queryColumnChecks = []struct {
 		// pg_ls_logdir() is executable by pg_monitor and needs no filesystem
 		// access. The pseudo-constant guard keeps it uncalled when the logging
 		// collector is off, where the directory need not exist.
-		"pg_ls_logdir()", "logging_collector", "LATERAL",
+		"pg_ls_logdir()", "logging_collector",
 	}},
 	{postgresQueryTasks, "stat_ssl", []string{
 		"pg_stat_ssl", "ssl", "cipher",

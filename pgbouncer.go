@@ -53,9 +53,9 @@ func getPgBouncerTasks() []CollectionTask {
 
 // findPgBouncerDir returns the configuration directory named by -pgbouncer-conf,
 // or the first of the usual locations that exists. A named directory is used as
-// given, so a wrong path reports itself rather than falling back silently.
-// Absence means PgBouncer is not installed, which is most hosts, and is a skip
-// rather than a failure.
+// given, and a wrong one is a failure rather than a skip, because the operator
+// said where to look. Absence from the usual locations means PgBouncer is not
+// installed, which is most hosts, and is a skip.
 func findPgBouncerDir(cfg *Config) (string, error) {
 	dirs := pgBouncerConfigDirs
 	if cfg.PgBouncerConf != "" {
@@ -66,6 +66,9 @@ func findPgBouncerDir(cfg *Config) (string, error) {
 		if info, err := os.Stat(dir); err == nil && info.IsDir() {
 			return dir, nil
 		}
+	}
+	if cfg.PgBouncerConf != "" {
+		return "", fmt.Errorf("no PgBouncer configuration directory at %s", cfg.PgBouncerConf)
 	}
 	return "", NewSkipError(fmt.Sprintf("no PgBouncer configuration directory in %v", dirs))
 }

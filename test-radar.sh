@@ -181,13 +181,13 @@ validate_freeze_age_file() {
 	fi
 
 	# Every row carries a numeric age, and the partitioned parent is excluded
-	# because its relfrozenxid is 0.
+	# because its relkind is 'p'.
 	if ! echo "$tsv" | tail -n +2 | awk -F'\t' '$5 ~ /^[0-9]+$/ {n++} END {exit !(n>0)}'; then
 		echo -e "${RED}✗ $scenario FAILED: table_freeze_age.tsv has no numeric ages${NC}"
 		return 1
 	fi
 	if echo "$tsv" | tail -n +2 | awk -F'\t' '$2 == "part_parent" {found=1} END {exit !found}'; then
-		echo -e "${RED}✗ $scenario FAILED: partitioned parent should be excluded (relfrozenxid = 0)${NC}"
+		echo -e "${RED}✗ $scenario FAILED: partitioned parent should be excluded (relkind 'p')${NC}"
 		return 1
 	fi
 

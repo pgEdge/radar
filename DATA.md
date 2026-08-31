@@ -246,7 +246,7 @@ Instance-level PostgreSQL collectors. Files stored in `postgresql/`.
 | `postgresql/db_role_setting.tsv` | `pg_db_role_setting` | Per-database/role settings |
 | `postgresql/file_settings.tsv` | `pg_file_settings` | Config file parse results and errors |
 | `postgresql/pg_hba.conf` | Data directory | Host-based authentication config |
-| `postgresql/log_directory.tsv` | `pg_ls_logdir()` | Listing of the server log directory: name, size and modification time per file. Names only, never log contents. Readable by `pg_monitor` and needs no filesystem access, so it works when radar runs as a non-`postgres` OS user. Empty when `logging_collector` is off |
+| `postgresql/log_directory.tsv` | `pg_ls_logdir()` | Listing of the server log directory: name, size and modification time per file. Names only, never log contents. Readable by `pg_monitor` and needs no filesystem access, so it works when radar runs as a non-`postgres` OS user. Header only, with no rows, when `logging_collector` is off |
 | `postgresql/pg_hba_file_rules.tsv` | `pg_hba_file_rules` | Parsed pg_hba.conf rules (PG10+) |
 | `postgresql/pg_ident.conf` | Data directory | User name mapping config |
 | `postgresql/postgresql.auto.conf` | Data directory | Auto-generated configuration |
@@ -364,7 +364,7 @@ Three Spock relations carry data that must never enter an archive, since an arch
 
 ## PgBouncer Collectors (Optional)
 
-Collected when a PgBouncer configuration directory is present, from `/etc/pgbouncer/` or `/usr/local/etc/pgbouncer/`, tried in that order. Skipped when PgBouncer is not installed. These need no database connection, so they are collected even when the PostgreSQL instance is unreachable.
+Collected when a PgBouncer configuration directory is present, from `/etc/pgbouncer/` or `/usr/local/etc/pgbouncer/`, tried in that order. Skipped when PgBouncer is not installed. A directory named with `-pgbouncer-conf` is used as given, and a wrong path is a failure rather than a skip. These need no database connection, so they are collected even when the PostgreSQL instance is unreachable.
 
 **`userlist.txt` contents are never collected.** The file holds credentials, so `files.tsv` records that it is there and nothing more.
 
