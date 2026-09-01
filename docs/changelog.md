@@ -7,6 +7,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-09-01
+
+### Fixed
+- `--help` capture in README.md and docs/index.md regenerated from the real CLI
+
 ## [0.6.0] - 2026-09-01
 
 ### Added
