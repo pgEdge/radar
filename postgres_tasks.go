@@ -96,6 +96,32 @@ WHERE NOT blocked_locks.granted`,
 		Query:       "SELECT state, wait_event_type, count(*) FROM pg_stat_activity GROUP BY state, wait_event_type ORDER BY count(*) DESC",
 	},
 	{
+		// pg_controldata's content, read through the catalogue functions rather
+		// than by shelling out to the binary, which needs the data directory
+		// and a matching binary version on PATH. Readable by pg_monitor.
+		Name:        "control_checkpoint",
+		ArchivePath: "postgresql/control_checkpoint.tsv",
+		Query:       "SELECT * FROM pg_control_checkpoint()",
+	},
+	{
+		// Carries data_page_checksum_version, which is the only place in the
+		// archive saying whether checksums are enabled, because
+		// databases_checksums.tsv reports failure counts rather than the setting.
+		Name:        "control_init",
+		ArchivePath: "postgresql/control_init.tsv",
+		Query:       "SELECT * FROM pg_control_init()",
+	},
+	{
+		Name:        "control_recovery",
+		ArchivePath: "postgresql/control_recovery.tsv",
+		Query:       "SELECT * FROM pg_control_recovery()",
+	},
+	{
+		Name:        "control_system",
+		ArchivePath: "postgresql/control_system.tsv",
+		Query:       "SELECT * FROM pg_control_system()",
+	},
+	{
 		Name:        "database_conflicts",
 		ArchivePath: "postgresql/database_conflicts.tsv",
 		Query:       "SELECT * FROM pg_stat_database_conflicts ORDER BY datname",
@@ -144,6 +170,24 @@ ORDER BY datname`,
 		Name:        "file_settings",
 		ArchivePath: "postgresql/file_settings.tsv",
 		Query:       "SELECT * FROM pg_file_settings ORDER BY sourcefile, seqno",
+	},
+	{
+		// pg_ls_logdir() rather than walking the directory: it is executable by
+		// pg_monitor and needs no filesystem access, so the listing works when
+		// radar runs as an OS user with no rights on the data directory. Names,
+		// sizes and timestamps only, never log contents.
+		//
+		// pg_ls_logdir() raises 58P01 when the log directory is absent, which is
+		// the case whenever the logging collector is off. current_setting is
+		// STABLE so the planner considers it a pseudo-constant. It then works as
+		// a gate on a Result above the Function Scan, so pg_ls_logdir() is never
+		// executed.
+		Name:        "log_directory",
+		ArchivePath: "postgresql/log_directory.tsv",
+		Query: `SELECT l.name, l.size, l.modification
+FROM pg_ls_logdir() l
+WHERE current_setting('logging_collector')::bool
+ORDER BY l.modification DESC, l.name`,
 	},
 	{
 		Name:        "pg_hba_file_rules",
@@ -272,6 +316,14 @@ ORDER BY s.pid`,
 		Name:        "stat_statements_total_time",
 		ArchivePath: "postgresql/stat_statements_total_time.tsv",
 		Query:       "SELECT userid, dbid, query, calls, total_exec_time, mean_exec_time, max_exec_time, rows FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 100",
+	},
+	{
+		// SELECT * rather than a column list, because the confl_* counters
+		// differ between major versions and a fixed list would break on any
+		// version lacking one of them.
+		Name:        "stat_subscription_stats",
+		ArchivePath: "postgresql/stat_subscription_stats.tsv",
+		Query:       "SELECT * FROM pg_stat_subscription_stats ORDER BY subname",
 	},
 	{
 		Name:        "stat_wal",
@@ -549,6 +601,26 @@ WHERE datname = current_database()`,
 		Query:       "SELECT * FROM pg_subscription_rel ORDER BY srsubid, srrelid",
 	},
 	{
+		// Ranked by freeze age, not size, because tables.tsv is capped at the
+		// largest 1000 and a small table can hold the wraparound horizon back.
+		// Includes pg_catalog and pg_toast relations, which tables.tsv excludes
+		// and which are common culprits. Narrow columns only: no size
+		// functions, so this stays cheap on an instance with many tables.
+		Name:        "table_freeze_age",
+		ArchivePath: "databases/%s/table_freeze_age.tsv",
+		Query: `SELECT n.nspname AS schemaname,
+       c.relname AS tablename,
+       c.relkind,
+       c.relpages,
+       age(c.relfrozenxid) AS relfrozenxid_age,
+       mxid_age(c.relminmxid) AS relminmxid_age
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE c.relkind IN ('r', 'm', 't')
+ORDER BY GREATEST(age(c.relfrozenxid), mxid_age(c.relminmxid)) DESC
+LIMIT 1000`,
+	},
+	{
 		Name:        "tables",
 		ArchivePath: "databases/%s/tables.tsv",
 		Query: `
@@ -586,6 +658,15 @@ WHERE datname = current_database()`,
 			            THEN toast.relpages::bigint * current_setting('block_size')::bigint
 			            ELSE pg_relation_size(c.reltoastrelid)
 			       END AS toast_size,
+			       -- A partitioned table carries relfrozenxid = 0, and
+			       -- age('0'::xid) returns a huge number that reads as an
+			       -- imminent wraparound, so the CASE guards leave those rows
+			       -- empty. Transaction-ID age uses age() and multixact age
+			       -- uses mxid_age().
+			       CASE WHEN c.relfrozenxid <> '0'::xid THEN age(c.relfrozenxid) END
+			           AS relfrozenxid_age,
+			       CASE WHEN c.relminmxid <> '0'::xid THEN mxid_age(c.relminmxid) END
+			           AS relminmxid_age,
 			       s.n_live_tup,
 			       s.n_dead_tup,
 			       s.n_mod_since_analyze,
@@ -635,6 +716,11 @@ WHERE datname = current_database()`,
 // pg_statviz extension query tasks (sorted alphabetically by name)
 // These are per-database tasks - ArchivePath will be formatted with dbname
 var pgStatvizQueryTasks = []SimpleQueryTask{
+	{
+		Name:        "pg_statviz_blocking",
+		ArchivePath: "pg_statviz/%s/blocking.tsv",
+		Query:       "SELECT * FROM pgstatviz.blocking ORDER BY snapshot_tstamp",
+	},
 	{
 		Name:        "pg_statviz_buf",
 		ArchivePath: "pg_statviz/%s/buf.tsv",
@@ -689,6 +775,109 @@ var pgStatvizQueryTasks = []SimpleQueryTask{
 		Name:        "pg_statviz_wal",
 		ArchivePath: "pg_statviz/%s/wal.tsv",
 		Query:       "SELECT * FROM pgstatviz.wal ORDER BY snapshot_tstamp",
+	},
+}
+
+// Spock replication query tasks, one file per catalogue relation under
+// spock/{dbname}/ (sorted alphabetically by name). Spock's catalogue is
+// per-database, so these are generated per database like the pg_statviz ones.
+//
+// Three Spock relations carry data that must never enter an archive, because an
+// archive gets attached to a support ticket: exception_log holds jsonb images of
+// the conflicting rows, resolutions holds the same as text, and
+// node_interface.if_dsn holds the node connection string with its password. The
+// two tasks that read those tables name their columns explicitly instead of
+// using SELECT *, and node_interface is not collected at all.
+var spockQueryTasks = []SimpleQueryTask{
+	{
+		Name:        "spock_channel_summary_stats",
+		ArchivePath: "spock/%s/channel_summary_stats.tsv",
+		Query:       "SELECT * FROM spock.channel_summary_stats ORDER BY sub_name",
+	},
+	{
+		// local_tup, remote_old_tup and remote_new_tup are excluded
+		// deliberately: they are jsonb images of the conflicting rows.
+		// error_message is kept: Spock stores the primary message with its
+		// SQLSTATE and no DETAIL, so a constraint violation's offending key is
+		// not included, and without the message the log says only that
+		// something failed.
+		Name:        "spock_exception_log",
+		ArchivePath: "spock/%s/exception_log.tsv",
+		Query: `SELECT remote_origin, remote_commit_ts, command_counter,
+       retry_errored_at, remote_xid, local_origin, local_commit_ts,
+       table_schema, table_name, operation, ddl_statement, ddl_user,
+       error_message
+FROM spock.exception_log
+ORDER BY retry_errored_at DESC NULLS LAST
+LIMIT 1000`,
+	},
+	{
+		Name:        "spock_lag_tracker",
+		ArchivePath: "spock/%s/lag_tracker.tsv",
+		Query:       "SELECT * FROM spock.lag_tracker ORDER BY origin_name, receiver_name",
+	},
+	{
+		Name:        "spock_local_node",
+		ArchivePath: "spock/%s/local_node.tsv",
+		Query:       "SELECT * FROM spock.local_node ORDER BY node_id",
+	},
+	{
+		Name:        "spock_local_sync_status",
+		ArchivePath: "spock/%s/local_sync_status.tsv",
+		Query:       "SELECT * FROM spock.local_sync_status ORDER BY sync_subid, sync_nspname, sync_relname",
+	},
+	{
+		// info is excluded deliberately: it is an operator-supplied jsonb
+		// argument to spock.node_create, defaulting to NULL, so what it holds
+		// depends on the deployment rather than on Spock.
+		Name:        "spock_node",
+		ArchivePath: "spock/%s/node.tsv",
+		Query:       "SELECT node_id, node_name, location, country FROM spock.node ORDER BY node_name",
+	},
+	{
+		// Column names only, no values: this table records which columns hold
+		// personally identifiable information.
+		Name:        "spock_pii",
+		ArchivePath: "spock/%s/pii.tsv",
+		Query:       "SELECT * FROM spock.pii ORDER BY pii_schema, pii_table, pii_column",
+	},
+	{
+		Name:        "spock_progress",
+		ArchivePath: "spock/%s/progress.tsv",
+		Query:       "SELECT * FROM spock.progress ORDER BY node_id, remote_node_id",
+	},
+	{
+		Name:        "spock_replication_set",
+		ArchivePath: "spock/%s/replication_set.tsv",
+		Query:       "SELECT * FROM spock.replication_set ORDER BY set_name",
+	},
+	{
+		Name:        "spock_replication_set_table",
+		ArchivePath: "spock/%s/replication_set_table.tsv",
+		Query:       "SELECT * FROM spock.replication_set_table ORDER BY set_id, set_reloid",
+	},
+	{
+		// local_tuple and remote_tuple are excluded deliberately: they are text
+		// images of the conflicting rows.
+		Name:        "spock_resolutions",
+		ArchivePath: "spock/%s/resolutions.tsv",
+		Query: `SELECT id, node_name, log_time, relname, idxname,
+       conflict_type, conflict_resolution, local_origin, local_xid,
+       local_timestamp, remote_origin, remote_xid, remote_timestamp,
+       remote_lsn
+FROM spock.resolutions
+ORDER BY log_time DESC
+LIMIT 1000`,
+	},
+	{
+		Name:        "spock_subscription",
+		ArchivePath: "spock/%s/subscription.tsv",
+		Query:       "SELECT * FROM spock.subscription ORDER BY sub_name",
+	},
+	{
+		Name:        "spock_tables",
+		ArchivePath: "spock/%s/tables.tsv",
+		Query:       "SELECT * FROM spock.tables ORDER BY nspname, relname",
 	},
 }
 

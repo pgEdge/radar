@@ -111,16 +111,17 @@ const (
 // Config holds connection parameters and collection settings
 type Config struct {
 	// PostgreSQL connection
-	Host        string
-	Port        int
-	Database    string
-	Username    string
-	Password    string
-	DataDir     string
-	SSLMode     string
-	SSLCert     string
-	SSLKey      string
-	SSLRootCert string
+	Host          string
+	Port          int
+	Database      string
+	Username      string
+	Password      string
+	DataDir       string
+	PgBouncerConf string
+	SSLMode       string
+	SSLCert       string
+	SSLKey        string
+	SSLRootCert   string
 
 	// Database connection (injected)
 	DB *sql.DB
@@ -337,6 +338,7 @@ func parseConfig() (*Config, error) {
 	flag.StringVar(&cfg.Database, "d", "", "database name")
 	flag.StringVar(&cfg.Username, "U", "", "database user")
 	flag.StringVar(&cfg.DataDir, "data-dir", "", "PostgreSQL data directory")
+	flag.StringVar(&cfg.PgBouncerConf, "pgbouncer-conf", "", "PgBouncer configuration directory (default: /etc/pgbouncer, /usr/local/etc/pgbouncer)")
 	flag.StringVar(&cfg.SSLMode, "sslmode", "prefer", "SSL mode (prefer, disable, require, verify-ca, verify-full)")
 	flag.StringVar(&cfg.SSLCert, "sslcert", "", "client SSL certificate file")
 	flag.StringVar(&cfg.SSLKey, "sslkey", "", "client SSL key file")
@@ -541,10 +543,11 @@ func collectAll(cfg *Config, zipWriter *zip.Writer) int {
 	if !cfg.SkipPostgres {
 		// Pass cfg.DB to PostgreSQL task generators
 		pgTasks = append(pgTasks, getPostgreSQLTasks(cfg.DB)...)
-		dbTasks, err := generateDatabaseTasks(cfg.DB)
+		dbTasks, conns, err := generateDatabaseTasks(cfg.DB)
 		if err != nil {
 			errorLog.Printf("Failed to generate database tasks: %v", err)
 		} else {
+			defer closeErrCheck(conns, "database connection")
 			pgTasks = append(pgTasks, dbTasks...)
 		}
 	}
@@ -670,6 +673,40 @@ func readFile(path string) ([]byte, error) {
 		return nil, fmt.Errorf("read failed: %w", err)
 	}
 	return data, nil
+}
+
+// writeDirListingTSV writes a TSV listing of the regular files in dir: one row
+// per file with its size and modification time. File contents are never read.
+// Directories, symlinks and other irregular entries are left out, having no
+// meaningful size to report. A directory that is absent or unreadable is a skip,
+// which is the normal case when radar runs as an OS user without rights on the
+// path.
+func writeDirListingTSV(dir string, w io.Writer) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return NewSkipError(fmt.Sprintf("cannot list %s: %v", dir, err))
+	}
+
+	if _, err := io.WriteString(w, "directory\tfilename\tsize_bytes\tmodified\n"); err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		info, err := entry.Info()
+		if err != nil {
+			// The entry went away between the listing and the stat.
+			continue
+		}
+		if !info.Mode().IsRegular() {
+			continue
+		}
+		if _, err := fmt.Fprintf(w, "%s\t%s\t%d\t%s\n",
+			dir, entry.Name(), info.Size(), info.ModTime().Format(time.RFC3339)); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // closeErrCheck safely closes a resource and logs any error

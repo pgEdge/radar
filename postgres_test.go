@@ -13,8 +13,13 @@ package main
 import (
 	"bytes"
 	"errors"
+	"net"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -37,6 +42,10 @@ func TestPostgreSQLCollectors(t *testing.T) {
 		{"checkpointer", "postgresql/checkpointer.tsv"},
 		{"configuration", "postgresql/configuration.tsv"},
 		{"connection_summary", "postgresql/connection_summary.tsv"},
+		{"control_checkpoint", "postgresql/control_checkpoint.tsv"},
+		{"control_init", "postgresql/control_init.tsv"},
+		{"control_recovery", "postgresql/control_recovery.tsv"},
+		{"control_system", "postgresql/control_system.tsv"},
 		{"database_conflicts", "postgresql/database_conflicts.tsv"},
 		{"database_sizes", "postgresql/database_sizes.tsv"},
 		{"databases", "postgresql/databases.tsv"},
@@ -46,6 +55,7 @@ func TestPostgreSQLCollectors(t *testing.T) {
 		{"databases_xact", "postgresql/databases_xact.tsv"},
 		{"db_role_setting", "postgresql/db_role_setting.tsv"},
 		{"file_settings", "postgresql/file_settings.tsv"},
+		{"log_directory", "postgresql/log_directory.tsv"},
 		{"pg_hba.conf", "postgresql/pg_hba.conf"},
 		{"pg_hba_file_rules", "postgresql/pg_hba_file_rules.tsv"},
 		{"pg_ident.conf", "postgresql/pg_ident.conf"},
@@ -75,6 +85,7 @@ func TestPostgreSQLCollectors(t *testing.T) {
 		{"stat_statements_calls", "postgresql/stat_statements_calls.tsv"},
 		{"stat_statements_max_time", "postgresql/stat_statements_max_time.tsv"},
 		{"stat_statements_total_time", "postgresql/stat_statements_total_time.tsv"},
+		{"stat_subscription_stats", "postgresql/stat_subscription_stats.tsv"},
 		{"stat_wal", "postgresql/stat_wal.tsv"},
 		{"subscriptions", "postgresql/subscriptions.tsv"},
 		{"tablespace_sizes", "postgresql/tablespace_sizes.tsv"},
@@ -195,5 +206,232 @@ func TestPGQueryCollectorUnavailableAsSkip(t *testing.T) {
 				t.Errorf("errors.As SkipError = %v, want %v (err: %v)", isSkip, tt.wantSkip, err)
 			}
 		})
+	}
+}
+
+// TestDBConnsReusesOneConnectionPerDatabase pins the connection budget: a task
+// on the database being collected reuses the connection already established for
+// it, and the closer releases that connection at the end.
+func TestDBConnsReusesOneConnectionPerDatabase(t *testing.T) {
+	held, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create mock: %v", err)
+	}
+	mock.ExpectClose()
+
+	cfg := &Config{Host: "127.0.0.1", Port: 1, Database: "postgres",
+		Username: "radar", SSLMode: "disable"}
+	// Seeded as though collection is part way through mydb.
+	conns := &dbConns{db: held, name: "mydb"}
+
+	got, err := conns.conn(cfg, "mydb")
+	if err != nil {
+		t.Fatalf("conn(mydb): %v", err)
+	}
+	if got != held {
+		t.Error("a second task on the same database opened another connection")
+	}
+
+	if err := conns.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	// database/sql reports "sql: database is closed" once the pool is closed.
+	if err := held.Ping(); err == nil || !strings.Contains(err.Error(), "closed") {
+		t.Errorf("the last connection was left open: Ping = %v", err)
+	}
+	// Collection closes whether or not a database was ever opened.
+	if err := conns.Close(); err != nil {
+		t.Errorf("Close with nothing held: %v", err)
+	}
+}
+
+// TestDBConnsClosesWhenCollectionReachesTheStartupDatabase covers the ordering
+// where the database radar was invoked against is collected after another one.
+// The startup connection serves it, and the connection to the database just
+// finished must not be left open while it does.
+func TestDBConnsClosesWhenCollectionReachesTheStartupDatabase(t *testing.T) {
+	initial, initialMock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create mock: %v", err)
+	}
+	initialMock.ExpectClose()
+	defer closeErrCheck(initial, "mock database")
+
+	held, heldMock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create mock: %v", err)
+	}
+	heldMock.ExpectClose()
+
+	cfg := &Config{Host: "127.0.0.1", Port: 1, Database: "postgres",
+		Username: "radar", SSLMode: "disable", DB: initial}
+	conns := &dbConns{db: held, name: "mydb"}
+
+	got, err := conns.conn(cfg, "postgres")
+	if err != nil {
+		t.Fatalf("conn(postgres): %v", err)
+	}
+	if got != initial {
+		t.Error("the startup database opened a second connection")
+	}
+	if err := held.Ping(); err == nil || !strings.Contains(err.Error(), "closed") {
+		t.Errorf("connection to the finished database left open: Ping = %v", err)
+	}
+}
+
+// TestDBConnsAttemptsAnUnreachableDatabaseOnce verifies that a database which
+// refuses this user costs one connection attempt rather than one per task: the
+// first task reports the failure, and the rest skip without connecting again.
+func TestDBConnsAttemptsAnUnreachableDatabaseOnce(t *testing.T) {
+	// Accepts each connection and closes it, so the startup handshake fails the
+	// way a rejected login does, and counts what radar opened.
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer closeErrCheck(listener, "probe listener")
+
+	var attempts atomic.Int64
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			attempts.Add(1)
+			closeErrCheck(conn, "probe connection")
+		}
+	}()
+
+	cfg := &Config{Host: "127.0.0.1", Port: listener.Addr().(*net.TCPAddr).Port,
+		Database: "postgres", Username: "radar", SSLMode: "disable"}
+	conns := &dbConns{}
+	defer closeErrCheck(conns, "database connection")
+
+	var buf bytes.Buffer
+	var skipErr SkipError
+	if err := conns.exec(cfg, "mydb", "SELECT 1", &buf); err == nil || errors.As(err, &skipErr) {
+		t.Fatalf("first task = %v, want the failure reported", err)
+	}
+	// What the first task costs is not fixed, since database/sql retries a
+	// connection it finds broken. What matters is that the second task adds
+	// nothing.
+	attempted := attempts.Load()
+	if attempted == 0 {
+		t.Fatal("the first task never connected")
+	}
+
+	if err := conns.exec(cfg, "mydb", "SELECT 1", &buf); !errors.As(err, &skipErr) {
+		t.Errorf("second task = %v, want SkipError", err)
+	}
+	if got := attempts.Load(); got != attempted {
+		t.Errorf("second task connected again: %d attempts, want %d", got, attempted)
+	}
+}
+
+// writeFixture creates a file holding contents, failing the test if it cannot.
+func writeFixture(t *testing.T, path, contents string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatalf("writing fixture %s: %v", path, err)
+	}
+}
+
+// TestWriteDirListingTSV verifies the directory listing shape: a header, one row
+// per regular file with its size, and no rows for subdirectories.
+func TestWriteDirListingTSV(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, filepath.Join(dir, "a.log"), "hello")
+	writeFixture(t, filepath.Join(dir, "b.log"), "hi")
+	if err := os.Mkdir(filepath.Join(dir, "sub"), 0o700); err != nil {
+		t.Fatalf("creating fixture subdirectory: %v", err)
+	}
+
+	var buf bytes.Buffer
+	if err := writeDirListingTSV(dir, &buf); err != nil {
+		t.Fatalf("writeDirListingTSV: %v", err)
+	}
+
+	// Each row is compared without its trailing timestamp, which varies.
+	want := []string{
+		"directory\tfilename\tsize_bytes\tmodified",
+		dir + "\ta.log\t5",
+		dir + "\tb.log\t2",
+	}
+	assertListing(t, buf.String(), want)
+
+	if strings.Contains(buf.String(), "sub") {
+		t.Error("listing includes the subdirectory")
+	}
+}
+
+// assertListing compares a directory listing against want, whose first entry is
+// the header and whose remaining entries are rows without their timestamp.
+func assertListing(t *testing.T, listing string, want []string) {
+	t.Helper()
+	lines := strings.Split(strings.TrimRight(listing, "\n"), "\n")
+	if len(lines) != len(want) {
+		t.Fatalf("got %d lines, want %d: %q", len(lines), len(want), lines)
+	}
+	if lines[0] != want[0] {
+		t.Errorf("header = %q, want %q", lines[0], want[0])
+	}
+	for i, line := range lines[1:] {
+		row, modified, _ := cutLastField(line)
+		if row != want[i+1] {
+			t.Errorf("row %d = %q, want %q", i, row, want[i+1])
+		}
+		if _, err := time.Parse(time.RFC3339, modified); err != nil {
+			t.Errorf("row %d modified = %q is not RFC3339: %v", i, modified, err)
+		}
+	}
+}
+
+// cutLastField splits a TSV row into everything before its final tab and the
+// final field.
+func cutLastField(row string) (head, last string, found bool) {
+	i := strings.LastIndex(row, "\t")
+	if i < 0 {
+		return row, "", false
+	}
+	return row[:i], row[i+1:], true
+}
+
+// TestWriteDirListingTSVSkipsIrregularEntries verifies that only regular files
+// are listed. A symlink or socket has no meaningful size to report, and its
+// lstat size describes the entry rather than any log content.
+func TestWriteDirListingTSVSkipsIrregularEntries(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, filepath.Join(dir, "real.log"), "hello")
+	if err := os.Symlink(filepath.Join(dir, "real.log"), filepath.Join(dir, "link.log")); err != nil {
+		t.Skipf("cannot create a symlink here: %v", err)
+	}
+
+	var buf bytes.Buffer
+	if err := writeDirListingTSV(dir, &buf); err != nil {
+		t.Fatalf("writeDirListingTSV: %v", err)
+	}
+
+	if !strings.Contains(buf.String(), "real.log") {
+		t.Errorf("listing lost the regular file: %q", buf.String())
+	}
+	if strings.Contains(buf.String(), "link.log") {
+		t.Errorf("listing includes a symlink: %q", buf.String())
+	}
+}
+
+// TestWriteDirListingTSVUnreadableIsSkip verifies that a directory radar cannot
+// list costs it that one file rather than failing the run. That is the normal
+// case when radar runs as an OS user without rights on the path.
+func TestWriteDirListingTSVUnreadableIsSkip(t *testing.T) {
+	var buf bytes.Buffer
+	err := writeDirListingTSV(filepath.Join(t.TempDir(), "does-not-exist"), &buf)
+
+	var skipErr SkipError
+	if !errors.As(err, &skipErr) {
+		t.Fatalf("err = %v, want SkipError", err)
+	}
+	if buf.Len() != 0 {
+		t.Errorf("wrote %d bytes for an unreadable directory, want 0", buf.Len())
 	}
 }

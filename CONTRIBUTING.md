@@ -217,7 +217,7 @@ When adding collectors:
 
 1. **Update unit tests** in `radar_test.go`
 2. **Update integration tests** if permission-dependent
-3. **Test all 4 permission scenarios** if applicable
+3. **Test all 6 integration scenarios** if applicable
 4. **Ensure silent handling** of missing tools/permissions
 
 ## Architecture
@@ -334,30 +334,40 @@ The project uses GitHub Actions for CI/CD. See [.github/workflows/ci.yml](.githu
 
 ### Integration Test Scenarios
 
-The integration test validates radar works correctly in all permission combinations:
+The integration test runs six scenarios: the four permission combinations, then certificate and GSSAPI authentication:
 
 **Scenario 1: Root + PostgreSQL superuser**
 - Full system access (all commands available to root)
 - Full PostgreSQL access (all views, config files)
-- Expected: ~66 system collectors, ~32 PostgreSQL collectors, pg_statviz data
+- Expected: ~71 system collectors, ~55 PostgreSQL collectors, pg_statviz data
 
 **Scenario 2: Root + PostgreSQL pg_monitor role**
 - Full system access (root privileges)
 - Monitoring-level PostgreSQL access (most views, limited config)
-- Expected: ~66 system collectors, ~29 PostgreSQL collectors, pg_statviz data
+- Expected: ~71 system collectors, ~51 PostgreSQL collectors, pg_statviz data
 - Note: Some collectors unavailable (e.g., pg_hba_file_rules, subscriptions)
 
 **Scenario 3: Non-root + PostgreSQL superuser**
 - Limited system access (some commands fail without root)
 - Full PostgreSQL access (all views, config files)
-- Expected: ~63 system collectors, ~32 PostgreSQL collectors, pg_statviz data
+- Expected: ~68 system collectors, ~51 PostgreSQL collectors, pg_statviz data
 - Note: Some system collectors unavailable (e.g., ifconfig, sysctl)
 
 **Scenario 4: Non-root + PostgreSQL pg_monitor role**
 - Limited system access (non-root user)
 - Monitoring-level PostgreSQL access (pg_monitor role)
-- Expected: ~63 system collectors, ~29 PostgreSQL collectors, pg_statviz data
+- Expected: ~68 system collectors, ~47 PostgreSQL collectors, pg_statviz data
 - Note: Combines limitations of both non-root and pg_monitor
+
+**Scenario 5: Certificate authentication**
+- Root, connecting as the pg_monitor role with a client certificate over TLS
+- Expected: ~71 system collectors, ~51 PostgreSQL collectors, pg_statviz data
+- Note: Exercises `-sslmode verify-full` with `-sslcert`, `-sslkey` and `-sslrootcert`
+
+**Scenario 6: GSSAPI/Kerberos authentication**
+- Root, connecting as the pg_monitor role with a Kerberos ticket from `kinit`
+- Expected: ~71 system collectors, ~51 PostgreSQL collectors, pg_statviz data
+- Note: `pg_hba.conf` requires `hostgssenc`, so the connection must be GSSAPI-encrypted
 
 All scenarios verify that radar handles permission limitations and collects maximum available data.
 
@@ -460,7 +470,7 @@ docs: update README with new collectors
 - Code must be formatted (gofmt)
 - Linting must pass (golangci-lint)
 - Unit tests must pass
-- Integration tests must pass (all 4 scenarios)
+- Integration tests must pass (all 6 scenarios)
 - Documentation updated if applicable
 
 ## Getting Help

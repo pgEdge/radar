@@ -1,10 +1,12 @@
 #!/bin/bash
 # Test script for radar in a Debian container with PostgreSQL 18
-# Tests all 4 permission scenarios:
+# Tests all 6 scenarios:
 # 1. Root + superuser
 # 2. Root + pg_monitor
 # 3. Non-root + superuser
 # 4. Non-root + pg_monitor
+# 5. Certificate authentication
+# 6. GSSAPI/Kerberos authentication
 
 set -e
 
@@ -25,6 +27,10 @@ chown -R postgres:postgres /var/lib/postgresql
 su - postgres -c "/usr/lib/postgresql/18/bin/initdb -D /var/lib/postgresql/18/main"
 
 echo ""
+echo "Enabling the logging collector, so log_directory exists to be listed..."
+su - postgres -c "echo 'logging_collector = on' >> /var/lib/postgresql/18/main/postgresql.conf"
+
+echo ""
 echo "Starting PostgreSQL 18..."
 su - postgres -c "/usr/lib/postgresql/18/bin/pg_ctl -D /var/lib/postgresql/18/main -l /var/lib/postgresql/18/logfile start"
 
@@ -41,6 +47,8 @@ su - postgres -c "/usr/lib/postgresql/18/bin/createdb testdb"
 su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"CREATE USER testuser WITH PASSWORD 'testpass';\""
 su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"GRANT CONNECT ON DATABASE testdb TO testuser;\""
 su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"GRANT pg_monitor TO testuser;\""
+su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"CREATE TABLE part_parent (id int, ts date) PARTITION BY RANGE (ts);\""
+su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"CREATE TABLE part_child PARTITION OF part_parent FOR VALUES FROM ('2020-01-01') TO ('2030-01-01');\""
 su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"CREATE EXTENSION pg_statviz;\""
 su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"SELECT pgstatviz.snapshot();\""
 
@@ -49,6 +57,217 @@ echo "Creating non-root system user..."
 useradd -m -s /bin/bash radaruser || true
 cp radar /home/radaruser/
 chown radaruser:radaruser /home/radaruser/radar
+
+echo ""
+echo "Setting up a PgBouncer configuration fixture..."
+mkdir -p /etc/pgbouncer
+cat > /etc/pgbouncer/pgbouncer.ini << 'PGBINI'
+; PgBouncer test fixture
+[databases]
+testdb = host=127.0.0.1 port=5432 dbname=testdb user=pooler password=ini-secret-value
+
+[pgbouncer]
+listen_addr = 127.0.0.1
+listen_port = 6432
+auth_type = scram-sha-256
+auth_file = /etc/pgbouncer/userlist.txt
+pool_mode = transaction
+max_client_conn = 500
+PGBINI
+cat > /etc/pgbouncer/userlist.txt << 'PGBUSERS'
+"pooler" "SCRAM-SHA-256$4096:userlist-secret-value"
+PGBUSERS
+# pgbouncer.ini is world-readable here so that every scenario exercises the
+# redaction filter, which is what protects it. userlist.txt stays root-only:
+# radar records that it is there and never reads its contents.
+chmod 0644 /etc/pgbouncer/pgbouncer.ini
+chmod 0600 /etc/pgbouncer/userlist.txt
+
+# Verifies PgBouncer collection. pgbouncer.ini ships with the [pgbouncer] section
+# intact and every other value removed, and userlist.txt is recorded as a
+# directory entry only: its contents are credentials.
+validate_pgbouncer() {
+	local zip_file="$1"
+	local scenario="$2"
+
+	local ini
+	ini=$(unzip -p "$zip_file" "pgbouncer/pgbouncer.ini" 2>/dev/null || true)
+	if [ -z "$ini" ]; then
+		echo -e "${RED}✗ $scenario FAILED: pgbouncer/pgbouncer.ini missing${NC}"
+		return 1
+	fi
+	if ! echo "$ini" | grep -q "^max_client_conn = 500$"; then
+		echo -e "${RED}✗ $scenario FAILED: pgbouncer.ini lost its [pgbouncer] values${NC}"
+		return 1
+	fi
+	if ! echo "$ini" | grep -q "^\[databases\]$"; then
+		echo -e "${RED}✗ $scenario FAILED: pgbouncer.ini lost its section headers${NC}"
+		return 1
+	fi
+	# No comment reaches the archive, so the fixture's header comment is gone.
+	if echo "$ini" | grep -qE "^[[:space:]]*[;#]"; then
+		echo -e "${RED}✗ $scenario FAILED: pgbouncer.ini still contains comments${NC}"
+		return 1
+	fi
+
+	if ! unzip -p "$zip_file" "pgbouncer/files.tsv" 2>/dev/null | grep -q "userlist.txt"; then
+		echo -e "${RED}✗ $scenario FAILED: pgbouncer/files.tsv does not record userlist.txt${NC}"
+		return 1
+	fi
+
+	# Neither secret may appear anywhere in the archive.
+	if unzip -p "$zip_file" 2>/dev/null | grep -q "ini-secret-value"; then
+		echo -e "${RED}✗ $scenario FAILED: a [databases] password reached the archive${NC}"
+		return 1
+	fi
+	if unzip -p "$zip_file" 2>/dev/null | grep -q "userlist-secret-value"; then
+		echo -e "${RED}✗ $scenario FAILED: userlist.txt contents reached the archive${NC}"
+		return 1
+	fi
+
+	return 0
+}
+
+# Verifies the log directory listing, which comes from pg_ls_logdir(). That is
+# executable by pg_monitor and needs no filesystem access, so every scenario
+# gets it, including the non-root ones that cannot traverse $PGDATA. It carries
+# names, sizes and timestamps only, never log contents.
+validate_log_directory() {
+	local zip_file="$1"
+	local scenario="$2"
+
+	local listing
+	listing=$(unzip -p "$zip_file" "postgresql/log_directory.tsv" 2>/dev/null || true)
+
+	if [ -z "$listing" ]; then
+		echo -e "${RED}✗ $scenario FAILED: postgresql/log_directory.tsv missing${NC}"
+		return 1
+	fi
+
+	if ! echo "$listing" | head -1 | grep -q "^name.size.modification$"; then
+		echo -e "${RED}✗ $scenario FAILED: unexpected log_directory.tsv header${NC}"
+		return 1
+	fi
+
+	if ! echo "$listing" | tail -n +2 | grep -q "\.log"; then
+		echo -e "${RED}✗ $scenario FAILED: log_directory.tsv lists no log file${NC}"
+		return 1
+	fi
+
+	# Names only: nothing from a log body may appear.
+	if echo "$listing" | grep -qE "LOG:|FATAL:|database system is ready"; then
+		echo -e "${RED}✗ $scenario FAILED: log_directory.tsv contains log file contents${NC}"
+		return 1
+	fi
+
+	return 0
+}
+
+# Verifies the dedicated freeze-age listing. It is ranked by age rather than
+# size, so it must reach relations tables.tsv excludes: pg_catalog and pg_toast.
+validate_freeze_age_file() {
+	local zip_file="$1"
+	local scenario="$2"
+
+	local tsv
+	tsv=$(unzip -p "$zip_file" "databases/testdb/table_freeze_age.tsv" 2>/dev/null || true)
+
+	if [ -z "$tsv" ]; then
+		echo -e "${RED}✗ $scenario FAILED: databases/testdb/table_freeze_age.tsv missing${NC}"
+		return 1
+	fi
+
+	if ! echo "$tsv" | head -1 | grep -q "^schemaname.tablename.relkind.relpages.relfrozenxid_age.relminmxid_age$"; then
+		echo -e "${RED}✗ $scenario FAILED: unexpected table_freeze_age.tsv header${NC}"
+		return 1
+	fi
+
+	# Every row carries a numeric age, and the partitioned parent is excluded
+	# because its relkind is 'p'.
+	if ! echo "$tsv" | tail -n +2 | awk -F'\t' '$5 ~ /^[0-9]+$/ {n++} END {exit !(n>0)}'; then
+		echo -e "${RED}✗ $scenario FAILED: table_freeze_age.tsv has no numeric ages${NC}"
+		return 1
+	fi
+	if echo "$tsv" | tail -n +2 | awk -F'\t' '$2 == "part_parent" {found=1} END {exit !found}'; then
+		echo -e "${RED}✗ $scenario FAILED: partitioned parent should be excluded (relkind 'p')${NC}"
+		return 1
+	fi
+
+	# An invalid relfrozenxid or relminmxid comes back as 2147483647, the INT_MAX
+	# both age() and mxid_age() return for one, so no age may read that.
+	if echo "$tsv" | tail -n +2 | awk -F'\t' '$5 == 2147483647 || $6 == 2147483647 {found=1} END {exit !found}'; then
+		echo -e "${RED}✗ $scenario FAILED: table_freeze_age.tsv reports an INT_MAX age${NC}"
+		return 1
+	fi
+
+	return 0
+}
+
+# Verifies the per-table freeze-age columns in tables.tsv. A partitioned table
+# carries relfrozenxid = 0, and age('0'::xid) returns a huge meaningless number
+# that reads as an imminent wraparound, so the partitioned parent must come back
+# empty while its partition reports a real age.
+validate_freeze_age() {
+	local zip_file="$1"
+	local scenario="$2"
+
+	if ! unzip -p "$zip_file" "databases/testdb/tables.tsv" | awk -F'\t' '
+		NR == 1 {
+			for (i = 1; i <= NF; i++) col[$i] = i
+			if (!("relfrozenxid_age" in col) || !("relminmxid_age" in col)) {
+				print "tables.tsv has no freeze-age columns" > "/dev/stderr"
+				exit 1
+			}
+			next
+		}
+		$col["tablename"] == "part_parent" {
+			parent = 1
+			if ($col["relfrozenxid_age"] != "" || $col["relminmxid_age"] != "") {
+				print "partitioned table part_parent reported a freeze age" > "/dev/stderr"
+				exit 1
+			}
+		}
+		$col["tablename"] == "part_child" {
+			child = 1
+			if ($col["relfrozenxid_age"] !~ /^[0-9]+$/ || $col["relminmxid_age"] !~ /^[0-9]+$/) {
+				print "partition part_child freeze age is not a number" > "/dev/stderr"
+				exit 1
+			}
+		}
+		END {
+			if (!parent) { print "part_parent row missing from tables.tsv" > "/dev/stderr"; exit 1 }
+			if (!child)  { print "part_child row missing from tables.tsv" > "/dev/stderr"; exit 1 }
+		}'; then
+		echo -e "${RED}✗ $scenario FAILED: per-table freeze age${NC}"
+		return 1
+	fi
+
+	return 0
+}
+
+# Total sessions ever opened to this instance, from the cumulative counter in
+# pg_stat_database.
+count_sessions() {
+	su - postgres -c "/usr/lib/postgresql/18/bin/psql -Atqc 'SELECT sum(sessions) FROM pg_stat_database'"
+}
+
+# Verifies the connection budget. Every database contributes tens of queries, so
+# a connection per query would be a connect and authentication storm on an
+# instance holding many databases. Expected here is 2: one to the instance, and
+# one to postgres, since testdb reuses the instance connection.
+validate_session_count() {
+	local before="$1"
+	local scenario="$2"
+	# The psql call reading the total opens a session of its own, hence the -1.
+	local used=$(( $(count_sessions) - before - 1 ))
+
+	echo "  Sessions opened: $used"
+	if [ "$used" -gt 10 ]; then
+		echo -e "${RED}✗ $scenario FAILED: opened $used sessions, expected at most 10${NC}"
+		return 1
+	fi
+	return 0
+}
 
 # Helper function to validate ZIP contents
 validate_zip() {
@@ -87,6 +306,22 @@ validate_zip() {
 		return 1
 	fi
 
+	if ! validate_freeze_age "$zip_file" "$scenario"; then
+		return 1
+	fi
+
+	if ! validate_freeze_age_file "$zip_file" "$scenario"; then
+		return 1
+	fi
+
+	if ! validate_log_directory "$zip_file" "$scenario"; then
+		return 1
+	fi
+
+	if ! validate_pgbouncer "$zip_file" "$scenario"; then
+		return 1
+	fi
+
 	return 0
 }
 
@@ -95,7 +330,11 @@ echo ""
 echo "========================================"
 echo -e "${YELLOW}Scenario 1: Root + superuser${NC}"
 echo "========================================"
+SESSIONS_BEFORE=$(count_sessions)
 ./radar -h localhost -d testdb -U postgres -vv
+if ! validate_session_count "$SESSIONS_BEFORE" "Scenario 1"; then
+	exit 1
+fi
 ZIP1=$(ls -t radar-*.zip | head -1)
 if ! validate_zip "$ZIP1" "Scenario 1" "yes"; then
 	exit 1

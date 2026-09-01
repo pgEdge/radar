@@ -11,6 +11,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -23,7 +24,9 @@ import (
 
 // isPGUnavailableError reports whether err indicates that the queried object
 // is not installed/available (missing extension, table, function, or schema).
-// These are treated as skips rather than failures.
+// These are treated as skips rather than failures. A permission denial is
+// excluded deliberately: the object exists and holds data, so being refused is
+// reported per collector rather than skipped.
 func isPGUnavailableError(err error) bool {
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) {
@@ -109,16 +112,17 @@ func collectPGConfigFile(db *sql.DB, cfg *Config, filename string, w io.Writer) 
 	return err
 }
 
-// generateDatabaseTasks creates per-database collection tasks
-func generateDatabaseTasks(db *sql.DB) ([]CollectionTask, error) {
+// generateDatabaseTasks creates per-database collection tasks, returning the
+// closer for the connection they share.
+func generateDatabaseTasks(db *sql.DB) ([]CollectionTask, io.Closer, error) {
 	if db == nil {
-		return nil, fmt.Errorf("PostgreSQL not initialized")
+		return nil, nil, fmt.Errorf("PostgreSQL not initialized")
 	}
 
 	// Get list of databases
 	rows, err := db.Query("SELECT datname FROM pg_database WHERE datallowconn ORDER BY datname")
 	if err != nil {
-		return nil, fmt.Errorf("querying databases: %w", err)
+		return nil, nil, fmt.Errorf("querying databases: %w", err)
 	}
 	defer closeErrCheck(rows, "database list query rows")
 
@@ -126,7 +130,7 @@ func generateDatabaseTasks(db *sql.DB) ([]CollectionTask, error) {
 	for rows.Next() {
 		var dbname string
 		if err := rows.Scan(&dbname); err != nil {
-			return nil, fmt.Errorf("scanning database name: %w", err)
+			return nil, nil, fmt.Errorf("scanning database name: %w", err)
 		}
 		// Always skip template0 and template1
 		if dbname == "template0" || dbname == "template1" {
@@ -136,12 +140,17 @@ func generateDatabaseTasks(db *sql.DB) ([]CollectionTask, error) {
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterating databases: %w", err)
+		return nil, nil, fmt.Errorf("iterating databases: %w", err)
 	}
 
 	// Generate tasks for each database
 	var tasks []CollectionTask
-	allDBTasks := append(perDatabaseQueryTasks, pgStatvizQueryTasks...)
+	conns := &dbConns{}
+	allDBTasks := make([]SimpleQueryTask, 0,
+		len(perDatabaseQueryTasks)+len(pgStatvizQueryTasks)+len(spockQueryTasks))
+	allDBTasks = append(allDBTasks, perDatabaseQueryTasks...)
+	allDBTasks = append(allDBTasks, pgStatvizQueryTasks...)
+	allDBTasks = append(allDBTasks, spockQueryTasks...)
 
 	for _, dbname := range databases {
 		// Capture loop variables for closure
@@ -156,22 +165,84 @@ func generateDatabaseTasks(db *sql.DB) ([]CollectionTask, error) {
 				Name:        fmt.Sprintf("%s/%s", dbName, td.Name),
 				ArchivePath: fmt.Sprintf(td.ArchivePath, dbName),
 				Collector: func(cfg *Config, w io.Writer) error {
-					return execPGQueryOnDB(dbName, cfg, td.Query, w)
+					return conns.exec(cfg, dbName, td.Query, w)
 				},
 			})
 		}
 	}
 
-	return tasks, nil
+	return tasks, conns, nil
 }
 
-// execPGQueryOnDB executes a query on a specific database
-func execPGQueryOnDB(dbname string, cfg *Config, query string, w io.Writer) error {
+// dbConns holds the connection the per-database tasks share. They are generated
+// and run grouped by database, so holding one connection and closing it when
+// collection moves on costs one connect and one authentication per database
+// rather than one per task.
+type dbConns struct {
+	db   *sql.DB
+	name string
+	err  error // why name could not be reached, if it could not
+}
+
+// conn returns the connection for dbname, establishing one on first use and
+// closing the connection to the database collection has left behind. A database
+// that cannot be reached is recorded, so its remaining tasks skip. The database
+// radar was invoked against is served by the connection opened at startup.
+func (c *dbConns) conn(cfg *Config, dbname string) (*sql.DB, error) {
+	if dbname == c.name {
+		if c.err != nil {
+			return nil, NewSkipError(c.err.Error())
+		}
+		return c.db, nil
+	}
+	// A different database, so the held connection is finished with.
+	closeErrCheck(c, "database connection")
+
+	if dbname == cfg.Database && cfg.DB != nil {
+		return cfg.DB, nil
+	}
+
 	db, err := sql.Open("pgx", cfg.ConnectionString(dbname))
 	if err != nil {
-		return fmt.Errorf("connecting to %s: %w", dbname, err)
+		return nil, fmt.Errorf("connecting to %s: %w", dbname, err)
 	}
-	defer closeErrCheck(db, "database connection")
+	// Collectors run one at a time, so one connection is all the pool needs.
+	db.SetMaxOpenConns(1)
+	c.name = dbname
+
+	// Connect here rather than leaving it to the first query. A database that
+	// allows connections but refuses this user then costs one rejected login
+	// instead of one per task, since c.err makes the rest of them skip.
+	pooled, err := db.Conn(context.Background())
+	if err != nil {
+		closeErrCheck(db, "database connection")
+		c.err = fmt.Errorf("connecting to %s: %w", dbname, err)
+		return nil, c.err
+	}
+	// Back to the pool, which the tasks then draw it from.
+	closeErrCheck(pooled, "pooled connection")
+
+	c.db = db
+	return db, nil
+}
+
+// Close closes the connection the per-database tasks were sharing.
+func (c *dbConns) Close() error {
+	c.name, c.err = "", nil
+	if c.db == nil {
+		return nil
+	}
+	db := c.db
+	c.db = nil
+	return db.Close()
+}
+
+// exec executes a query on a specific database
+func (c *dbConns) exec(cfg *Config, dbname, query string, w io.Writer) error {
+	db, err := c.conn(cfg, dbname)
+	if err != nil {
+		return err
+	}
 
 	rows, err := db.Query(query)
 	if err != nil {

@@ -10,6 +10,8 @@ Complete reference of all data collected by radar.
 - **PostgreSQL Instance**: Instance-level PostgreSQL collectors
 - **Per-Database**: Schema and object collectors (per database)
 - **pg_statviz (optional)**: Time-series statistics collectors (per database)
+- **Spock (optional)**: Multi-master replication state collectors (per database)
+- **PgBouncer (optional)**: Pooler configuration, when PgBouncer is installed
 
 **Output**: All data collected in a single ZIP file named `radar-{hostname}-{timestamp}.zip`. The archive root contains a `radar.out` entry identifying the radar binary that produced it (`version` from the build-time `-X main.version` stamp, `commit` from Go's embedded VCS info).
 
@@ -230,6 +232,10 @@ Instance-level PostgreSQL collectors. Files stored in `postgresql/`.
 | `postgresql/checkpointer.tsv` | `pg_stat_checkpointer` | Checkpointer statistics |
 | `postgresql/configuration.tsv` | `pg_settings` | Configuration parameters |
 | `postgresql/connection_summary.tsv` | `pg_stat_activity` | Connection count by state and wait event |
+| `postgresql/control_checkpoint.tsv` | `pg_control_checkpoint()` | Latest checkpoint: LSNs, timeline, next and oldest XIDs and multixacts |
+| `postgresql/control_init.tsv` | `pg_control_init()` | Cluster initialisation constants: block and WAL segment size, whether data checksums are enabled |
+| `postgresql/control_recovery.tsv` | `pg_control_recovery()` | Recovery state: minimum recovery end point, backup start and end LSNs |
+| `postgresql/control_system.tsv` | `pg_control_system()` | System identifier, control and catalog version numbers |
 | `postgresql/database_conflicts.tsv` | `pg_stat_database_conflicts` | Recovery conflict statistics |
 | `postgresql/database_sizes.tsv` | `pg_database_size()` | Database disk usage |
 | `postgresql/databases.tsv` | `pg_database` | Database list |
@@ -240,6 +246,7 @@ Instance-level PostgreSQL collectors. Files stored in `postgresql/`.
 | `postgresql/db_role_setting.tsv` | `pg_db_role_setting` | Per-database/role settings |
 | `postgresql/file_settings.tsv` | `pg_file_settings` | Config file parse results and errors |
 | `postgresql/pg_hba.conf` | Data directory | Host-based authentication config |
+| `postgresql/log_directory.tsv` | `pg_ls_logdir()` | Listing of the server log directory: name, size and modification time per file. Names only, never log contents. Readable by `pg_monitor` and needs no filesystem access, so it works when radar runs as a non-`postgres` OS user. Header only, with no rows, when `logging_collector` is off |
 | `postgresql/pg_hba_file_rules.tsv` | `pg_hba_file_rules` | Parsed pg_hba.conf rules (PG10+) |
 | `postgresql/pg_ident.conf` | Data directory | User name mapping config |
 | `postgresql/postgresql.auto.conf` | Data directory | Auto-generated configuration |
@@ -268,6 +275,7 @@ Instance-level PostgreSQL collectors. Files stored in `postgresql/`.
 | `postgresql/stat_statements_calls.tsv` | `pg_stat_statements` | Top 100 queries by call count |
 | `postgresql/stat_statements_max_time.tsv` | `pg_stat_statements` | Top 100 queries by max execution time |
 | `postgresql/stat_statements_total_time.tsv` | `pg_stat_statements` | Top 100 queries by total execution time |
+| `postgresql/stat_subscription_stats.tsv` | `pg_stat_subscription_stats` | Per-subscription apply and sync error counts, and per-kind conflict counters (PG15+) |
 | `postgresql/stat_wal.tsv` | `pg_stat_wal` | WAL statistics (PG14+) |
 | `postgresql/subscriptions.tsv` | `pg_subscription` | Logical replication subscriptions |
 | `postgresql/tablespace_sizes.tsv` | `pg_tablespace_size()` | Tablespace disk usage |
@@ -302,7 +310,8 @@ Collected for each accessible database. Files stored in `databases/{dbname}/`.
 | `stat_database.tsv` | `pg_stat_database` | Per-database statistics |
 | `statistics.tsv` | `pg_statistic_ext` | Extended statistics (PG10+) |
 | `subscription_tables.tsv` | `pg_subscription_rel` | Subscription relation states |
-| `tables.tsv` | `pg_class` + `pg_stat_all_tables` | Top 1000 tables by size with persistence, options, heap and table sizes, toast mapping, dead-tup counters, vacuum/analyze timestamps and per-table vacuum/analyze ages in seconds |
+| `table_freeze_age.tsv` | `pg_class` | Top 1000 relations by transaction-ID and multixact freeze age. Ranked by age rather than size, so a small table holding the wraparound horizon back is included where `tables.tsv` would miss it, and it covers `pg_catalog` and `pg_toast` relations that `tables.tsv` excludes. Relations with `relfrozenxid = 0` are left out, having no tuples of their own |
+| `tables.tsv` | `pg_class` + `pg_stat_all_tables` | Top 1000 tables by size with persistence, options, heap and table sizes, toast mapping, dead-tup counters, vacuum/analyze timestamps, per-table vacuum/analyze ages in seconds, and transaction-ID and multixact freeze ages (empty for partitioned tables, which hold no tuples of their own) |
 | `triggers.tsv` | `pg_trigger` | Triggers |
 | `types.tsv` | `pg_type` | Data types |
 
@@ -314,6 +323,7 @@ If the pg_statviz extension is installed in a database, these collectors are ava
 
 | File | Table | Description |
 |------|-------|-------------|
+| `blocking.tsv` | `pgstatviz.blocking` | Blocking lock history: blocked and blocker counts, plus per-lock-type counts (JSONB, pg_statviz 1.2+) |
 | `buf.tsv` | `pgstatviz.buf` | Buffer and checkpoint statistics |
 | `conf.tsv` | `pgstatviz.conf` | Configuration snapshots (JSONB) |
 | `conn.tsv` | `pgstatviz.conn` | Connection statistics (JSONB) |
@@ -325,3 +335,40 @@ If the pg_statviz extension is installed in a database, these collectors are ava
 | `snapshots.tsv` | `pgstatviz.snapshots` | Snapshot timestamps |
 | `wait.tsv` | `pgstatviz.wait` | Wait event statistics (JSONB) |
 | `wal.tsv` | `pgstatviz.wal` | WAL statistics (PG14+) |
+
+---
+
+## Spock Collectors (Optional)
+
+If the [Spock](https://github.com/pgEdge/spock) extension is installed in a database, these collectors are available. Files stored in `spock/{dbname}/`.
+
+Three Spock relations carry data that must never enter an archive, since an archive is routinely attached to a support ticket. `exception_log` holds jsonb images of the conflicting rows, `resolutions` holds the same as text, and `node_interface.if_dsn` holds the node connection string including its password. The two tasks reading those tables name their columns explicitly rather than using `SELECT *`, and `node_interface` is not collected at all.
+
+| File | Relation | Description |
+|------|----------|-------------|
+| `channel_summary_stats.tsv` | `spock.channel_summary_stats` | Per-subscription counters: rows applied, conflicts, delta-apply conflicts. Aggregates only, no row data |
+| `exception_log.tsv` | `spock.exception_log` | Last 1000 apply exceptions by retry time. Excludes `local_tup`, `remote_old_tup` and `remote_new_tup` (jsonb row images). Keeps `error_message`, the primary error message with its SQLSTATE. Spock stores no `DETAIL`, so a constraint violation's offending key is not included, though an error whose primary message embeds a value (a failed type conversion, for example) would carry it |
+| `lag_tracker.tsv` | `spock.lag_tracker` | Per-node-pair replication lag in bytes and time |
+| `local_node.tsv` | `spock.local_node` | Which node this database is |
+| `local_sync_status.tsv` | `spock.local_sync_status` | Per-relation initial sync state |
+| `node.tsv` | `spock.node` | Cluster node roster: id, name, location, country. Excludes `info` (deployment-defined jsonb) |
+| `pii.tsv` | `spock.pii` | Columns registered as holding personally identifiable information. Column names only, no values |
+| `progress.tsv` | `spock.progress` | Apply progress per origin: commit timestamp and LSNs |
+| `replication_set.tsv` | `spock.replication_set` | Replication sets and which operations they replicate |
+| `replication_set_table.tsv` | `spock.replication_set_table` | Table membership of replication sets, with column list and row filter |
+| `resolutions.tsv` | `spock.resolutions` | Last 1000 conflict resolutions by log time. Excludes `local_tuple` and `remote_tuple` (text row images) |
+| `subscription.tsv` | `spock.subscription` | Subscriptions with enabled state, slot name, replication sets and apply delay |
+| `tables.tsv` | `spock.tables` | User tables and the replication set each belongs to, if any |
+
+---
+
+## PgBouncer Collectors (Optional)
+
+Collected when a PgBouncer configuration directory is present, from `/etc/pgbouncer/` or `/usr/local/etc/pgbouncer/`, tried in that order. Skipped when PgBouncer is not installed. A directory named with `-pgbouncer-conf` is used as given, and a wrong path is a failure rather than a skip. These need no database connection, so they are collected even when the PostgreSQL instance is unreachable.
+
+**`userlist.txt` contents are never collected.** The file holds credentials, so `files.tsv` records that it is there and nothing more.
+
+| File | Source | Description |
+|------|--------|-------------|
+| `pgbouncer/pgbouncer.ini` | `pgbouncer.ini` | The `[pgbouncer]` section verbatim: pool mode, connection limits, listen address, auth type and auth file. Every other section keeps its key names and loses its values, because `[databases]` and `[peers]` connection strings routinely contain `password=`. Comments are dropped entirely, wherever they appear, since a commented-out entry carries a password as readily as a live one. An `%include` line is kept, but the file it names is not followed. The directory searched is `-pgbouncer-conf` when given, otherwise `/etc/pgbouncer/` then `/usr/local/etc/pgbouncer/` |
+| `pgbouncer/files.tsv` | filesystem | Listing of the configuration directory: name, size and modification time per file. This is how `userlist.txt` is recorded |

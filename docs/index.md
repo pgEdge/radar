@@ -69,7 +69,7 @@ psql -c "GRANT pg_monitor TO radaruser;"
 PGPASSWORD='secure_password' ./radar -d mydatabase -U radaruser
 ```
 
-Note: The pg_monitor role collects 68 of 71 collectors. Missing data includes some replication catalog views and `pg_hba_file_rules` (though the actual `pg_hba.conf` file is still collected via filesystem access).
+Note: a `pg_monitor` role reaches nearly everything. Expect a few replication catalog views and `pg_hba_file_rules` to be missing, and a permission denial on those to be reported per collector; the run still completes and writes an archive. `pg_hba.conf` itself is still collected from the filesystem.
 
 **Limited Permissions**: radar can run as a non-root user with limited PostgreSQL permissions. Some system collectors will be skipped, and some PostgreSQL catalog queries may fail gracefully.
 
@@ -104,6 +104,8 @@ Options:
     	comma-separated default-disabled task names to enable (e.g. pgstattuple, disabled by default)
   -p int
     	database port (default 5432)
+  -pgbouncer-conf string
+    	PgBouncer configuration directory (default: /etc/pgbouncer, /usr/local/etc/pgbouncer)
   -skip-postgres
     	skip PostgreSQL data collection
   -skip-system
@@ -169,13 +171,15 @@ For a complete reference of all collected data, see [data.md](data.md).
 - **Configuration & files**: `pg_db_role_setting`, `pg_file_settings`, `pg_hba.conf`, `pg_hba_file_rules`, `pg_ident.conf`, `pg_settings`, `pg_tablespace`, `postgresql.auto.conf`, `postgresql.conf`, `recovery.conf`, `recovery.done`
 - **Activity & monitoring**: `pg_locks`, `pg_postmaster_start_time()`, `pg_prepared_xacts`, `pg_shmem_allocations`, `pg_stat_activity`
 - **Statistics views**: `pg_stat_archiver`, `pg_stat_bgwriter`, `pg_stat_checkpointer` (PG17+), `pg_stat_database_conflicts`, `pg_stat_io` (PG16+), `pg_stat_slru`, `pg_stat_ssl`, `pg_stat_statements` (if installed), `pg_stat_wal` (PG14+), `pg_stat_wal_receiver`
-- **Replication & WAL**: `pg_current_wal_lsn()`, `pg_replication_origin_status`, `pg_replication_slots`, `pg_stat_replication`, `pg_stat_replication_slots` (PG14+, spill counters), `pg_subscription`
+- **Replication & WAL**: `pg_current_wal_lsn()`, `pg_replication_origin_status`, `pg_replication_slots`, `pg_stat_replication`, `pg_stat_replication_slots` (PG14+, spill counters), `pg_stat_subscription_stats` (PG15+, apply/sync error and conflict counters), `pg_subscription`
 - **Progress tracking**: `pg_stat_progress_analyze`, `pg_stat_progress_basebackup`, `pg_stat_progress_cluster`, `pg_stat_progress_copy`, `pg_stat_progress_create_index`, `pg_stat_progress_vacuum`
 - **Catalog**: `pg_available_extension_versions`, `pg_database` (incl. `datfrozenxid`/`datminmxid` wraparound headroom and `datconnlimit`), `pg_database_size()`, `pg_roles`, `pg_tablespace_size()`, `version()`
+- **Control file**: `pg_control_checkpoint()`, `pg_control_init()`, `pg_control_recovery()`, `pg_control_system()` (the `pg_controldata` content, read as SQL)
+- **Log directory**: `pg_ls_logdir()`, with per-file name, size and modification time. Names only, never log contents
 
 **Per-Database**
 
-- **Schema objects**: `pg_class` + `pg_stat_all_tables` (tables incl. dead-tup counters, vacuum/analyze timestamps, `reloptions`, `reltoastrelid`, `relpersistence`), `pg_index` + `pg_stat_all_indexes` (indexes incl. validity, scan counters, size), `pg_namespace`, `pg_operator`, `pg_sequences`, `pg_type`
+- **Schema objects**: `pg_class` + `pg_stat_all_tables` (tables incl. dead-tup counters, vacuum/analyze timestamps, per-table `relfrozenxid`/`relminmxid` freeze ages, `reloptions`, `reltoastrelid`, `relpersistence`), plus a dedicated freeze-age listing ranked by age rather than size so a small table near the wraparound threshold is not missed, `pg_index` + `pg_stat_all_indexes` (indexes incl. validity, scan counters, size), `pg_namespace`, `pg_operator`, `pg_sequences`, `pg_type`
 - **Functions & procedures**: `pg_proc`
 - **Triggers & partitioning**: `pg_inherits`, `pg_partitioned_table`, `pg_trigger`
 - **Logical replication**: `pg_publication`, `pg_publication_tables`, `pg_subscription_rel`
@@ -185,7 +189,16 @@ For a complete reference of all collected data, see [data.md](data.md).
 
 **[pg_statviz](https://github.com/vyruss/pg_statviz) Extension** (if present)
 
-- **Time-series statistics**: `pgstatviz.buf`, `pgstatviz.conf`, `pgstatviz.conn`, `pgstatviz.db`, `pgstatviz.io`, `pgstatviz.lock`, `pgstatviz.snapshots`, `pgstatviz.wait`, `pgstatviz.wal`
+- **Time-series statistics**: `pgstatviz.blocking`, `pgstatviz.buf`, `pgstatviz.conf`, `pgstatviz.conn`, `pgstatviz.db`, `pgstatviz.io`, `pgstatviz.lock`, `pgstatviz.repl`, `pgstatviz.slru`, `pgstatviz.snapshots`, `pgstatviz.wait`, `pgstatviz.wal`
+
+**[PgBouncer](https://www.pgbouncer.org/)** (if installed)
+
+- **Pooler configuration**: the `[pgbouncer]` section of `pgbouncer.ini`, plus a listing of the configuration directory. Values outside `[pgbouncer]` are removed, because `[databases]` connection strings routinely contain `password=`, and comments are dropped entirely. `userlist.txt` is recorded as a directory entry only: it holds credentials and its contents are never collected. Use `-pgbouncer-conf` for a configuration directory outside the usual locations
+
+**[Spock](https://github.com/pgEdge/spock) Extension** (if present)
+
+- **Replication state**: `spock.channel_summary_stats`, `spock.lag_tracker`, `spock.local_node`, `spock.local_sync_status`, `spock.node`, `spock.pii`, `spock.progress`, `spock.replication_set`, `spock.replication_set_table`, `spock.subscription`, `spock.tables`
+- **Conflicts**: `spock.exception_log` and `spock.resolutions`, carrying counters, timestamps, conflict types and the apply error message. The jsonb and text images of the conflicting rows are excluded, and `spock.node_interface` is not collected at all because `if_dsn` holds the node password. `error_message` is retained: Spock stores no `DETAIL`, so a constraint violation's offending key is not included, though an error whose primary message embeds a value would carry it
 
 ## Output Structure
 
@@ -208,14 +221,25 @@ radar-hostname-20260115-133700.zip
 │   ├── postgresql.conf
 │   ├── pg_hba.conf
 │   └── ...
-└── databases/           (Per-database data)
-    ├── postgres/
-    │   ├── extensions.tsv
-    │   ├── tables.tsv
-    │   └── ...
-    └── mydb/
-        ├── extensions.tsv
-        └── ...
+├── databases/           (Per-database data)
+│   ├── postgres/
+│   │   ├── extensions.tsv
+│   │   ├── tables.tsv
+│   │   └── ...
+│   └── mydb/
+│       ├── extensions.tsv
+│       └── ...
+├── pg_statviz/          (Per-database pg_statviz time series, if installed)
+│   └── mydb/
+│       ├── snapshots.tsv
+│       └── ...
+├── spock/               (Per-database Spock replication state, if installed)
+│   └── mydb/
+│       ├── lag_tracker.tsv
+│       └── ...
+└── pgbouncer/           (PgBouncer configuration, if installed)
+    ├── pgbouncer.ini
+    └── files.tsv
 ```
 
 **File Formats**:
@@ -232,6 +256,7 @@ radar-hostname-20260115-133700.zip
 
 - Data streams directly to ZIP file without buffering in memory
 - Sequential execution with minimal memory footprint
+- One connection per database, reused across all of that database's queries
 - Complete collection typically takes seconds
 
 ## Author

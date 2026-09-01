@@ -16,6 +16,7 @@ import (
 	"flag"
 	"io"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -550,75 +551,128 @@ func TestPerDatabaseTasksStructure(t *testing.T) {
 	}
 }
 
-// TestQueryTaskColumnsCoverage asserts that the queries we expanded continue
-// to reference the column tokens we rely on. Catches accidental column
-// removal during future edits to these query strings.
+// queryColumnChecks lists the column tokens each expanded query must keep
+// referencing, so an accidental column removal is caught.
+var queryColumnChecks = []struct {
+	tasks       []SimpleQueryTask
+	taskName    string
+	mustContain []string
+}{
+	{postgresQueryTasks, "databases", []string{
+		"datfrozenxid", "datminmxid", "datconnlimit",
+		"datistemplate", "datallowconn",
+	}},
+	{perDatabaseQueryTasks, "table_freeze_age", []string{
+		// Ranked by freeze age rather than size, so a small table near the
+		// wraparound threshold is included. Reaches pg_catalog and pg_toast,
+		// which tables.tsv excludes.
+		"age(c.relfrozenxid)", "mxid_age(c.relminmxid)",
+		"GREATEST", "LIMIT 1000", "'r', 'm', 't'",
+	}},
+	{perDatabaseQueryTasks, "tables", []string{
+		"n_live_tup", "n_dead_tup", "last_autovacuum", "last_analyze",
+		"reltuples", "reloptions", "reltoastrelid", "relpersistence",
+		"relpages", "pg_relation_size", "pg_table_size", "LIMIT 1000",
+		"many_tables", "current_setting('block_size')",
+		"last_vacuum_age_seconds", "last_autovacuum_age_seconds",
+		"last_analyze_age_seconds", "last_autoanalyze_age_seconds",
+		// Freeze age, with the guards that keep a partitioned table's
+		// relfrozenxid = 0 from reading as an imminent wraparound.
+		"relfrozenxid_age", "relminmxid_age",
+		"age(c.relfrozenxid)", "mxid_age(c.relminmxid)",
+		"c.relfrozenxid <> '0'::xid", "c.relminmxid <> '0'::xid",
+	}},
+	{perDatabaseQueryTasks, "indexes", []string{
+		"indrelid", "indclass", "indkey", "indisvalid",
+		"idx_scan", "pg_relation_size", "LIMIT 1000",
+		"many_indexes", "current_setting('block_size')",
+	}},
+	{perDatabaseQueryTasks, "sequences", []string{
+		"pg_sequences", "last_value", "max_value", "min_value", "increment_by",
+	}},
+	{postgresQueryTasks, "log_directory", []string{
+		// pg_ls_logdir() is executable by pg_monitor and needs no filesystem
+		// access. The pseudo-constant guard keeps it uncalled when the logging
+		// collector is off, where the directory need not exist.
+		"pg_ls_logdir()", "logging_collector",
+	}},
+	{postgresQueryTasks, "stat_ssl", []string{
+		"pg_stat_ssl", "ssl", "cipher",
+	}},
+	{postgresQueryTasks, "stat_replication_slots", []string{
+		"pg_stat_replication_slots",
+	}},
+	{perDatabaseQueryTasks, "bloat", []string{
+		"table_bloat_ratio", "wastedbytes",
+	}},
+	{perDatabaseQueryTasks, "pgstattuple", []string{
+		"pgstattuple_approx",
+	}},
+}
+
+// TestQueryTaskColumnsCoverage asserts that the queries we expanded continue to
+// reference the column tokens we rely on.
 func TestQueryTaskColumnsCoverage(t *testing.T) {
-	checks := []struct {
-		taskList    string
-		taskName    string
-		mustContain []string
-	}{
-		{"postgres", "databases", []string{
-			"datfrozenxid", "datminmxid", "datconnlimit",
-			"datistemplate", "datallowconn",
-		}},
-		{"perDB", "tables", []string{
-			"n_live_tup", "n_dead_tup", "last_autovacuum", "last_analyze",
-			"reltuples", "reloptions", "reltoastrelid", "relpersistence",
-			"relpages", "pg_relation_size", "pg_table_size", "LIMIT 1000",
-			"many_tables", "current_setting('block_size')",
-			"last_vacuum_age_seconds", "last_autovacuum_age_seconds",
-			"last_analyze_age_seconds", "last_autoanalyze_age_seconds",
-		}},
-		{"perDB", "indexes", []string{
-			"indrelid", "indclass", "indkey", "indisvalid",
-			"idx_scan", "pg_relation_size", "LIMIT 1000",
-			"many_indexes", "current_setting('block_size')",
-		}},
-		{"perDB", "sequences", []string{
-			"pg_sequences", "last_value", "max_value", "min_value", "increment_by",
-		}},
-		{"postgres", "stat_ssl", []string{
-			"pg_stat_ssl", "ssl", "cipher",
-		}},
-		{"postgres", "stat_replication_slots", []string{
-			"pg_stat_replication_slots",
-		}},
-		{"perDB", "bloat", []string{
-			"table_bloat_ratio", "wastedbytes",
-		}},
-		{"perDB", "pgstattuple", []string{
-			"pgstattuple_approx",
-		}},
-	}
-
-	taskByName := func(list []SimpleQueryTask, name string) *SimpleQueryTask {
-		for i := range list {
-			if list[i].Name == name {
-				return &list[i]
-			}
-		}
-		return nil
-	}
-
-	for _, c := range checks {
-		var task *SimpleQueryTask
-		switch c.taskList {
-		case "postgres":
-			task = taskByName(postgresQueryTasks, c.taskName)
-		case "perDB":
-			task = taskByName(perDatabaseQueryTasks, c.taskName)
-		}
+	for _, c := range queryColumnChecks {
+		task := findQueryTask(c.tasks, c.taskName)
 		if task == nil {
-			t.Errorf("task %q not found in %s tasks", c.taskName, c.taskList)
+			t.Errorf("task %q not found", c.taskName)
 			continue
 		}
-		for _, want := range c.mustContain {
-			if !strings.Contains(task.Query, want) {
-				t.Errorf("task %q query missing expected token %q", c.taskName, want)
-			}
+		assertQueryContains(t, c.taskName, task.Query, c.mustContain)
+	}
+}
+
+// findQueryTask returns the task named name, or nil when the registry has none.
+func findQueryTask(list []SimpleQueryTask, name string) *SimpleQueryTask {
+	for i := range list {
+		if list[i].Name == name {
+			return &list[i]
 		}
+	}
+	return nil
+}
+
+// assertQueryContains checks that query mentions every token in want.
+func assertQueryContains(t *testing.T, taskName, query string, want []string) {
+	t.Helper()
+	for _, token := range want {
+		if !strings.Contains(query, token) {
+			t.Errorf("task %q query missing expected token %q", taskName, token)
+		}
+	}
+}
+
+// TestPgStatvizCollectorsRegistered pins the set of pg_statviz tables radar
+// collects, and the archive path each one lands on.
+func TestPgStatvizCollectorsRegistered(t *testing.T) {
+	expected := map[string]string{
+		"pg_statviz_blocking":  "pg_statviz/%s/blocking.tsv",
+		"pg_statviz_buf":       "pg_statviz/%s/buf.tsv",
+		"pg_statviz_conf":      "pg_statviz/%s/conf.tsv",
+		"pg_statviz_conn":      "pg_statviz/%s/conn.tsv",
+		"pg_statviz_db":        "pg_statviz/%s/db.tsv",
+		"pg_statviz_io":        "pg_statviz/%s/io.tsv",
+		"pg_statviz_lock":      "pg_statviz/%s/lock.tsv",
+		"pg_statviz_repl":      "pg_statviz/%s/repl.tsv",
+		"pg_statviz_slru":      "pg_statviz/%s/slru.tsv",
+		"pg_statviz_snapshots": "pg_statviz/%s/snapshots.tsv",
+		"pg_statviz_wait":      "pg_statviz/%s/wait.tsv",
+		"pg_statviz_wal":       "pg_statviz/%s/wal.tsv",
+	}
+
+	got := make(map[string]string, len(pgStatvizQueryTasks))
+	for _, task := range pgStatvizQueryTasks {
+		got[task.Name] = task.ArchivePath
+	}
+
+	for name, path := range expected {
+		if got[name] != path {
+			t.Errorf("pg_statviz task %q archive path = %q, want %q", name, got[name], path)
+		}
+	}
+	if len(got) != len(expected) {
+		t.Errorf("got %d pg_statviz tasks, want %d", len(got), len(expected))
 	}
 }
 
@@ -637,6 +691,166 @@ func TestPgStatvizTasksStructure(t *testing.T) {
 		if !strings.Contains(task.ArchivePath, "%s") {
 			t.Errorf("pgStatvizQueryTasks[%d] (%s) ArchivePath missing %%s placeholder: %s", i, task.Name, task.ArchivePath)
 		}
+	}
+}
+
+// TestSpockCollectorsRegistered pins the set of Spock catalogue relations radar
+// collects, and the archive path each one lands on.
+func TestSpockCollectorsRegistered(t *testing.T) {
+	expected := map[string]string{
+		"spock_channel_summary_stats": "spock/%s/channel_summary_stats.tsv",
+		"spock_exception_log":         "spock/%s/exception_log.tsv",
+		"spock_lag_tracker":           "spock/%s/lag_tracker.tsv",
+		"spock_local_node":            "spock/%s/local_node.tsv",
+		"spock_local_sync_status":     "spock/%s/local_sync_status.tsv",
+		"spock_node":                  "spock/%s/node.tsv",
+		"spock_pii":                   "spock/%s/pii.tsv",
+		"spock_progress":              "spock/%s/progress.tsv",
+		"spock_replication_set":       "spock/%s/replication_set.tsv",
+		"spock_replication_set_table": "spock/%s/replication_set_table.tsv",
+		"spock_resolutions":           "spock/%s/resolutions.tsv",
+		"spock_subscription":          "spock/%s/subscription.tsv",
+		"spock_tables":                "spock/%s/tables.tsv",
+	}
+
+	got := make(map[string]string, len(spockQueryTasks))
+	for _, task := range spockQueryTasks {
+		got[task.Name] = task.ArchivePath
+	}
+
+	for name, path := range expected {
+		if got[name] != path {
+			t.Errorf("Spock task %q archive path = %q, want %q", name, got[name], path)
+		}
+	}
+	if len(got) != len(expected) {
+		t.Errorf("got %d Spock tasks, want %d", len(got), len(expected))
+	}
+}
+
+// TestSpockTasksStructure verifies all Spock tasks have required fields.
+func TestSpockTasksStructure(t *testing.T) {
+	for i, task := range spockQueryTasks {
+		if task.Name == "" {
+			t.Errorf("spockQueryTasks[%d] missing Name", i)
+		}
+		if task.ArchivePath == "" {
+			t.Errorf("spockQueryTasks[%d] (%s) missing ArchivePath", i, task.Name)
+		}
+		if task.Query == "" {
+			t.Errorf("spockQueryTasks[%d] (%s) missing Query", i, task.Name)
+		}
+		if !strings.Contains(task.ArchivePath, "%s") {
+			t.Errorf("spockQueryTasks[%d] (%s) ArchivePath missing %%s placeholder: %s", i, task.Name, task.ArchivePath)
+		}
+	}
+}
+
+// TestSpockQueriesExcludeSensitiveColumns guards the three Spock relations that
+// carry conflicting-row images or node connection strings. Those columns must
+// never reach an archive, so no Spock query may name them, and the relations
+// holding them may not be read with SELECT *.
+func TestSpockQueriesExcludeSensitiveColumns(t *testing.T) {
+	// Every column named, matched on a word boundary. None of these names is a
+	// substring of another, so each one has to be listed: local_tup and
+	// local_tuple are columns of different relations.
+	forbidden := []string{
+		"local_tup", "remote_old_tup", "remote_new_tup", // exception_log row images
+		"local_tuple", "remote_tuple", "resolution_details", // resolutions row images
+		"if_dsn", "node_interface", // node connection string, password included
+		"info", // spock.node, deployment-defined jsonb
+	}
+	sensitive := regexp.MustCompile(`\b(` + strings.Join(forbidden, "|") + `)\b`)
+
+	for _, task := range spockQueryTasks {
+		if found := sensitive.FindString(task.Query); found != "" {
+			t.Errorf("Spock task %q query names sensitive column %q", task.Name, found)
+		}
+	}
+
+	// The relations carrying those columns must use explicit column lists.
+	starRelations := []struct {
+		task     string
+		relation string
+	}{
+		{"spock_exception_log", "spock.exception_log"},
+		{"spock_resolutions", "spock.resolutions"},
+		{"spock_node", "spock.node"},
+	}
+	byName := make(map[string]SimpleQueryTask, len(spockQueryTasks))
+	for _, task := range spockQueryTasks {
+		byName[task.Name] = task
+	}
+	for _, r := range starRelations {
+		task, found := byName[r.task]
+		if !found {
+			t.Errorf("Spock task %q not registered", r.task)
+			continue
+		}
+		if strings.Contains(task.Query, "SELECT * FROM "+r.relation) {
+			t.Errorf("Spock task %q reads %s with SELECT *; an explicit column list is required", r.task, r.relation)
+		}
+	}
+}
+
+// archivePathsByName maps task name to archive path, asserting every task is in
+// the "database" category on the way through.
+func archivePathsByName(t *testing.T, tasks []CollectionTask) map[string]string {
+	t.Helper()
+	paths := make(map[string]string, len(tasks))
+	for _, task := range tasks {
+		if task.Category != "database" {
+			t.Errorf("task %q has category %q, want \"database\"", task.Name, task.Category)
+		}
+		paths[task.Name] = task.ArchivePath
+	}
+	return paths
+}
+
+// TestGenerateDatabaseTasksRegistersAllRegistries traces the full path from the
+// three per-database registries to the archive paths they produce, and confirms
+// the template databases are left out.
+func TestGenerateDatabaseTasksRegistersAllRegistries(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create mock: %v", err)
+	}
+	defer closeErrCheck(db, "mock database")
+
+	mock.ExpectQuery("SELECT datname FROM pg_database").
+		WillReturnRows(sqlmock.NewRows([]string{"datname"}).
+			AddRow("mydb").AddRow("template0").AddRow("template1"))
+
+	tasks, conns, err := generateDatabaseTasks(db)
+	if err != nil {
+		t.Fatalf("generateDatabaseTasks: %v", err)
+	}
+	defer closeErrCheck(conns, "database connection")
+
+	paths := archivePathsByName(t, tasks)
+
+	// One representative per registry: per-database, pg_statviz, Spock. The
+	// template databases must contribute nothing, so their entries expect "".
+	expected := map[string]string{
+		"mydb/tables":              "databases/mydb/tables.tsv",
+		"mydb/pg_statviz_blocking": "pg_statviz/mydb/blocking.tsv",
+		"mydb/spock_lag_tracker":   "spock/mydb/lag_tracker.tsv",
+		"template0/tables":         "",
+		"template1/tables":         "",
+	}
+	for name, want := range expected {
+		if paths[name] != want {
+			t.Errorf("task %q archive path = %q, want %q", name, paths[name], want)
+		}
+	}
+
+	wantCount := len(perDatabaseQueryTasks) + len(pgStatvizQueryTasks) + len(spockQueryTasks)
+	if len(tasks) != wantCount {
+		t.Errorf("got %d tasks for one database, want %d", len(tasks), wantCount)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet sqlmock expectations: %v", err)
 	}
 }
 
