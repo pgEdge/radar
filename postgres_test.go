@@ -13,9 +13,11 @@ package main
 import (
 	"bytes"
 	"errors"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -207,59 +209,37 @@ func TestPGQueryCollectorUnavailableAsSkip(t *testing.T) {
 	}
 }
 
-// TestDBConnsReusesOneConnectionPerDatabase pins the connection budget: the
-// startup connection serves its own database, every task on another database
-// shares one connection, and that connection is closed when collection moves on
-// to the next database.
+// TestDBConnsReusesOneConnectionPerDatabase pins the connection budget: a task
+// on the database being collected reuses the connection already established for
+// it, and the closer releases that connection at the end.
 func TestDBConnsReusesOneConnectionPerDatabase(t *testing.T) {
-	initial, _, err := sqlmock.New()
+	held, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatalf("failed to create mock: %v", err)
 	}
-	defer closeErrCheck(initial, "mock database")
+	mock.ExpectClose()
 
-	// Nothing listens on port 1, and nothing needs to: sql.Open parses the
-	// connection string without contacting the server.
 	cfg := &Config{Host: "127.0.0.1", Port: 1, Database: "postgres",
-		Username: "radar", SSLMode: "disable", DB: initial}
-	conns := &dbConns{}
+		Username: "radar", SSLMode: "disable"}
+	// Seeded as though collection is part way through mydb.
+	conns := &dbConns{db: held, name: "mydb"}
 
-	got, err := conns.conn(cfg, "postgres")
-	if err != nil {
-		t.Fatalf("conn(postgres): %v", err)
-	}
-	if got != initial {
-		t.Error("the startup database opened a second connection")
-	}
-
-	first, err := conns.conn(cfg, "mydb")
+	got, err := conns.conn(cfg, "mydb")
 	if err != nil {
 		t.Fatalf("conn(mydb): %v", err)
 	}
-	again, err := conns.conn(cfg, "mydb")
-	if err != nil {
-		t.Fatalf("conn(mydb) again: %v", err)
-	}
-	if again != first {
+	if got != held {
 		t.Error("a second task on the same database opened another connection")
-	}
-
-	last, err := conns.conn(cfg, "otherdb")
-	if err != nil {
-		t.Fatalf("conn(otherdb): %v", err)
-	}
-	// database/sql reports "sql: database is closed" once the pool is closed.
-	if err := first.Ping(); err == nil || !strings.Contains(err.Error(), "closed") {
-		t.Errorf("previous database's connection left open: Ping = %v", err)
 	}
 
 	if err := conns.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
-	if err := last.Ping(); err == nil || !strings.Contains(err.Error(), "closed") {
-		t.Errorf("last database's connection left open: Ping = %v", err)
+	// database/sql reports "sql: database is closed" once the pool is closed.
+	if err := held.Ping(); err == nil || !strings.Contains(err.Error(), "closed") {
+		t.Errorf("the last connection was left open: Ping = %v", err)
 	}
-	// Collection closes whether or not a second database was ever opened.
+	// Collection closes whether or not a database was ever opened.
 	if err := conns.Close(); err != nil {
 		t.Errorf("Close with nothing held: %v", err)
 	}
@@ -270,20 +250,22 @@ func TestDBConnsReusesOneConnectionPerDatabase(t *testing.T) {
 // The startup connection serves it, and the connection to the database just
 // finished must not be left open while it does.
 func TestDBConnsClosesWhenCollectionReachesTheStartupDatabase(t *testing.T) {
-	initial, _, err := sqlmock.New()
+	initial, initialMock, err := sqlmock.New()
 	if err != nil {
 		t.Fatalf("failed to create mock: %v", err)
 	}
+	initialMock.ExpectClose()
 	defer closeErrCheck(initial, "mock database")
+
+	held, heldMock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create mock: %v", err)
+	}
+	heldMock.ExpectClose()
 
 	cfg := &Config{Host: "127.0.0.1", Port: 1, Database: "postgres",
 		Username: "radar", SSLMode: "disable", DB: initial}
-	conns := &dbConns{}
-
-	held, err := conns.conn(cfg, "mydb")
-	if err != nil {
-		t.Fatalf("conn(mydb): %v", err)
-	}
+	conns := &dbConns{db: held, name: "mydb"}
 
 	got, err := conns.conn(cfg, "postgres")
 	if err != nil {
@@ -295,9 +277,55 @@ func TestDBConnsClosesWhenCollectionReachesTheStartupDatabase(t *testing.T) {
 	if err := held.Ping(); err == nil || !strings.Contains(err.Error(), "closed") {
 		t.Errorf("connection to the finished database left open: Ping = %v", err)
 	}
+}
 
-	if err := conns.Close(); err != nil {
-		t.Errorf("Close: %v", err)
+// TestDBConnsAttemptsAnUnreachableDatabaseOnce verifies that a database which
+// refuses this user costs one connection attempt rather than one per task: the
+// first task reports the failure, and the rest skip without connecting again.
+func TestDBConnsAttemptsAnUnreachableDatabaseOnce(t *testing.T) {
+	// Accepts each connection and closes it, so the startup handshake fails the
+	// way a rejected login does, and counts what radar opened.
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer closeErrCheck(listener, "probe listener")
+
+	var attempts atomic.Int64
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			attempts.Add(1)
+			closeErrCheck(conn, "probe connection")
+		}
+	}()
+
+	cfg := &Config{Host: "127.0.0.1", Port: listener.Addr().(*net.TCPAddr).Port,
+		Database: "postgres", Username: "radar", SSLMode: "disable"}
+	conns := &dbConns{}
+	defer closeErrCheck(conns, "database connection")
+
+	var buf bytes.Buffer
+	var skipErr SkipError
+	if err := conns.exec(cfg, "mydb", "SELECT 1", &buf); err == nil || errors.As(err, &skipErr) {
+		t.Fatalf("first task = %v, want the failure reported", err)
+	}
+	// What the first task costs is not fixed, since database/sql retries a
+	// connection it finds broken. What matters is that the second task adds
+	// nothing.
+	attempted := attempts.Load()
+	if attempted == 0 {
+		t.Fatal("the first task never connected")
+	}
+
+	if err := conns.exec(cfg, "mydb", "SELECT 1", &buf); !errors.As(err, &skipErr) {
+		t.Errorf("second task = %v, want SkipError", err)
+	}
+	if got := attempts.Load(); got != attempted {
+		t.Errorf("second task connected again: %d attempts, want %d", got, attempted)
 	}
 }
 

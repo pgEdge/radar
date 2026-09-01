@@ -11,6 +11,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -180,13 +181,18 @@ func generateDatabaseTasks(db *sql.DB) ([]CollectionTask, io.Closer, error) {
 type dbConns struct {
 	db   *sql.DB
 	name string
+	err  error // why name could not be reached, if it could not
 }
 
-// conn returns the connection for dbname, opening one on first use and closing
-// the connection to the database collection has left behind. The database radar
-// was invoked against is served by the connection opened at startup.
+// conn returns the connection for dbname, establishing one on first use and
+// closing the connection to the database collection has left behind. A database
+// that cannot be reached is recorded, so its remaining tasks skip. The database
+// radar was invoked against is served by the connection opened at startup.
 func (c *dbConns) conn(cfg *Config, dbname string) (*sql.DB, error) {
-	if c.db != nil && dbname == c.name {
+	if dbname == c.name {
+		if c.err != nil {
+			return nil, NewSkipError(c.err.Error())
+		}
 		return c.db, nil
 	}
 	// A different database, so the held connection is finished with.
@@ -202,17 +208,32 @@ func (c *dbConns) conn(cfg *Config, dbname string) (*sql.DB, error) {
 	}
 	// Collectors run one at a time, so one connection is all the pool needs.
 	db.SetMaxOpenConns(1)
-	c.db, c.name = db, dbname
+	c.name = dbname
+
+	// Connect here rather than leaving it to the first query. A database that
+	// allows connections but refuses this user then costs one rejected login
+	// instead of one per task, since c.err makes the rest of them skip.
+	pooled, err := db.Conn(context.Background())
+	if err != nil {
+		closeErrCheck(db, "database connection")
+		c.err = fmt.Errorf("connecting to %s: %w", dbname, err)
+		return nil, c.err
+	}
+	// Back to the pool, which the tasks then draw it from.
+	closeErrCheck(pooled, "pooled connection")
+
+	c.db = db
 	return db, nil
 }
 
 // Close closes the connection the per-database tasks were sharing.
 func (c *dbConns) Close() error {
+	c.name, c.err = "", nil
 	if c.db == nil {
 		return nil
 	}
 	db := c.db
-	c.db, c.name = nil, ""
+	c.db = nil
 	return db.Close()
 }
 
