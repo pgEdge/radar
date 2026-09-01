@@ -91,15 +91,15 @@ Usage: radar [options]
 
 Options:
   -U string
-    	database user (default postgres)
+    	database user
   -d string
-    	database name (default "postgres")
+    	database name
   -data-dir string
     	PostgreSQL data directory
   -exclude string
     	comma-separated task names to skip (e.g. -exclude bloat,stat_ssl)
   -h string
-    	database host (default "localhost")
+    	database host
   -include string
     	comma-separated default-disabled task names to enable (e.g. pgstattuple, disabled by default)
   -p int
@@ -110,14 +110,14 @@ Options:
     	skip PostgreSQL data collection
   -skip-system
     	skip system data collection
-  -sslmode string
-    	SSL mode: prefer, disable, require, verify-ca, verify-full (default "prefer")
   -sslcert string
     	client SSL certificate file
   -sslkey string
-    	client SSL private key file
+    	client SSL key file
+  -sslmode string
+    	SSL mode (prefer, disable, require, verify-ca, verify-full) (default "prefer")
   -sslrootcert string
-    	SSL root (CA) certificate file
+    	SSL root certificate file
   -v	verbose output (summary)
   -vv
     	very verbose output (detailed)
