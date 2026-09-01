@@ -7,6 +7,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-09-01
+
+### Added
+
+#### PostgreSQL
+- `control_checkpoint`, `control_init`, `control_recovery`, `control_system` collectors - `pg_controldata` content through the `pg_control_*()` functions, so neither the data directory nor a matching server binary is needed
+- `stat_subscription_stats` collector - per-subscription apply and sync error counts, and per-kind conflict counters (PG15+)
+- `log_directory` collector - server log directory listing from `pg_ls_logdir()`: name, size and modification time per file, never contents. Readable by `pg_monitor` and needs no filesystem access
+
+#### Per-database
+- `table_freeze_age` collector - top 1000 relations by transaction-ID and multixact freeze age, ranked by age rather than size, and reaching the `pg_catalog` and `pg_toast` relations that `tables` excludes
+- `relfrozenxid_age` and `relminmxid_age` columns in the `tables` collector - per-table transaction-ID and multixact freeze age, empty for partitioned tables, which hold no tuples of their own
+
+#### pg_statviz
+- `blocking` collector - blocking lock history: blocked and blocker counts plus per-lock-type counts (pg_statviz 1.2+)
+
+#### Spock
+- 13 collectors under `spock/<db>/`, skipped when Spock is not installed: `channel_summary_stats`, `exception_log`, `lag_tracker`, `local_node`, `local_sync_status`, `node`, `pii`, `progress`, `replication_set`, `replication_set_table`, `resolutions`, `subscription`, `tables`
+
+#### PgBouncer
+- `pgbouncer.ini` collector - the `[pgbouncer]` section verbatim; every other section keeps its key names and loses its values, and comments are dropped wherever they appear
+- `pgbouncer_files` collector - listing of the configuration directory. `userlist.txt` is recorded as an entry only, never read
+- Collected without a database connection, so pooler configuration reaches the archive even when the instance is unreachable
+- `-pgbouncer-conf` flag - PgBouncer configuration directory outside `/etc/pgbouncer` and `/usr/local/etc/pgbouncer`. A path given here that does not exist is a failure rather than a silent skip
+
 ## [0.5.1] - 2026-08-06
 
 ### Security
