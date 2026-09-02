@@ -59,13 +59,20 @@ func globalOption(args []string) error {
 
 // printUsage writes the help text: the usage line, the build version, the
 // global options, then the collection options from the registered flag set.
+// The write error is discarded because flag.PrintDefaults, which emits the
+// rest of the same output, discards its own.
 func printUsage(w io.Writer) {
-	fmt.Fprintf(w, "Usage: radar [options]\n\n")
-	fmt.Fprintf(w, "VERSION:\n   %s\n\n", version)
-	fmt.Fprintf(w, "GLOBAL OPTIONS:\n")
-	fmt.Fprintf(w, "   --help         show help\n")
-	fmt.Fprintf(w, "   --version, -V  print the version\n\n")
-	fmt.Fprintf(w, "Options:\n")
+	_, _ = fmt.Fprintf(w, `Usage: radar [options]
+
+VERSION:
+   %s
+
+GLOBAL OPTIONS:
+   --help         show help
+   --version, -V  print the version
+
+Options:
+`, version)
 	flag.CommandLine.SetOutput(w)
 	flag.PrintDefaults()
 }
