@@ -53,16 +53,21 @@ For detailed build instructions and cross-compilation, see [CONTRIBUTING.md](CON
 ## Quick Start
 
 ```bash
-# Collect both system and PostgreSQL data
-./radar -d mydatabase
+# Collect system and PostgreSQL data (the default)
+./radar -d mydatabase -U databaseuser
 
 # System data only
-./radar --skip-postgres
+./radar -skip-postgres
 
 # PostgreSQL data only
-./radar -d mydatabase --skip-system
+./radar -d mydatabase -U databaseuser -skip-system
 ```
 
+Both connection flags are optional:
+
+- `-U` falls back to `PGUSER`, then to the current OS user
+- `-d` falls back to `PGDATABASE`, then to `postgres` (except with `-skip-system`, when it requires an explicit database name or PGDATABASE)
+- 
 ## Permissions & Security
 
 ### Recommended: Root + PostgreSQL Superuser
