@@ -7,6 +7,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2026-09-02
+
+### Changed
+- `--version` and `-V` options - print the radar version
+- `--help` writes to stdout rather than stderr
+- `--help` and `--version` override every other option; `--help` wins when both are given
+
+### Security
+- Archive created readable only by its owner
+- radar refuses to write to an existing output path instead of truncating it
+
+### Fixed
+- `radar.out` carried no modification time
+
 ## [0.6.1] - 2026-09-01
 
 ### Fixed
