@@ -296,7 +296,7 @@ func main() {
 	if cfg.Verbose {
 		infoLog.Printf("Creating archive: %s", outputFile)
 	}
-	outFile, err := os.Create(outputFile)
+	outFile, err := os.OpenFile(outputFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		errorLog.Printf("Failed to create output file: %v", err)
 		os.Exit(ExitCollectError)

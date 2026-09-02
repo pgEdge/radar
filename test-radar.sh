@@ -282,6 +282,14 @@ validate_zip() {
 
 	echo "  PostgreSQL: $pg_count, System: $sys_count, pg_statviz: $statviz_count, Empty files: $empty_count"
 
+	# The archive is owner-only: it holds pg_hba.conf, connection details and
+	# query text, and is written into a directory other local users can read.
+	local mode=$(stat -c %a "$zip_file")
+	if [ "$mode" != "600" ]; then
+		echo -e "${RED}✗ $scenario FAILED: archive mode $mode, expected 600${NC}"
+		return 1
+	fi
+
 	# Check for empty files (should be 0)
 	if [ "$empty_count" -gt 0 ]; then
 		echo -e "${RED}✗ $scenario FAILED: Found $empty_count empty files in archive${NC}"
