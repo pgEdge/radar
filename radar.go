@@ -101,7 +101,7 @@ func writeRadarMeta(zw *zip.Writer) error {
 		}
 	}
 
-	w, err := zw.Create("radar.out")
+	w, err := zw.CreateHeader(archiveHeader("radar.out"))
 	if err != nil {
 		return err
 	}
@@ -167,6 +167,14 @@ type CollectionTask struct {
 	Name        string // Descriptive name for logging
 	ArchivePath string // Path within ZIP archive
 	Collector   func(*Config, io.Writer) error
+}
+
+func archiveHeader(name string) *zip.FileHeader {
+	return &zip.FileHeader{
+		Name:     name,
+		Method:   DefaultCompressionMethod,
+		Modified: time.Now(),
+	}
 }
 
 // lazyZipWriter defers ZIP entry creation until first Write()
@@ -321,7 +329,7 @@ func main() {
 	if cfg.Verbose {
 		infoLog.Printf("Creating archive: %s", outputFile)
 	}
-	outFile, err := os.Create(outputFile)
+	outFile, err := os.OpenFile(outputFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		errorLog.Printf("Failed to create output file: %v", err)
 		os.Exit(ExitCollectError)
@@ -633,14 +641,8 @@ func collect(cfg *Config, zipWriter *zip.Writer, tasks []CollectionTask) int {
 	collected := 0
 
 	for _, task := range tasks {
-		header := &zip.FileHeader{
-			Name:     task.ArchivePath,
-			Method:   DefaultCompressionMethod,
-			Modified: time.Now(),
-		}
-
 		// Use lazy writer - only creates ZIP entry on first Write()
-		lazy := &lazyZipWriter{zipWriter: zipWriter, header: header}
+		lazy := &lazyZipWriter{zipWriter: zipWriter, header: archiveHeader(task.ArchivePath)}
 
 		err := task.Collector(cfg, lazy)
 		if err != nil {
