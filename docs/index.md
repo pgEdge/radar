@@ -89,6 +89,10 @@ The tool does **not** collect: passwords, query result data, table contents, or 
 ```
 Usage: radar [options]
 
+GLOBAL OPTIONS:
+   --help         show help
+   --version, -V  print the version
+
 Options:
   -U string
     	database user

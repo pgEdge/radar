@@ -18,6 +18,8 @@ NC='\033[0m'
 # Binary is pre-built by run-ci-local.sh and copied into container by Dockerfile
 echo "Using pre-built radar binary..."
 ./radar --help > /dev/null 2>&1 || { echo -e "${RED}✗ radar binary not found or not executable${NC}"; exit 1; }
+./radar --help | grep -q '^Usage: radar \[options\]$' || { echo -e "${RED}✗ radar --help did not write usage to stdout${NC}"; exit 1; }
+./radar --version | grep -q '^radar version ' || { echo -e "${RED}✗ radar --version did not report a version${NC}"; exit 1; }
 
 echo ""
 echo "Initializing PostgreSQL 18..."
