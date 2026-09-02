@@ -63,9 +63,6 @@ For detailed build instructions and cross-compilation, see [CONTRIBUTING.md](CON
 ./radar -d mydatabase -U databaseuser -skip-system
 ```
 
-Radar writes a timestamped ZIP archive to the current directory and prints its
-name on completion.
-
 Both connection flags are optional:
 
 - `-U` falls back to `PGUSER`, then to the current OS user
