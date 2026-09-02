@@ -66,8 +66,8 @@ For detailed build instructions and cross-compilation, see [CONTRIBUTING.md](CON
 Both connection flags are optional:
 
 - `-U` falls back to `PGUSER`, then to the current OS user
-- `-d` falls back to `PGDATABASE`, then to `postgres`
-
+- `-d` falls back to `PGDATABASE`, then to `postgres` (except with `-skip-system`, when it requires an explicit database name or PGDATABASE)
+- 
 ## Permissions & Security
 
 ### Recommended: Root + PostgreSQL Superuser
