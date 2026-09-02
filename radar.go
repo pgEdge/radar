@@ -34,6 +34,42 @@ import (
 // Release builds set it to e.g. "v0.5.0"; unstamped dev builds report "dev".
 var version = "dev"
 
+// errHelpRequested and errVersionRequested are returned by parseConfig when a
+// global option was given instead of a collection request. main prints the
+// corresponding output and exits successfully.
+var (
+	errHelpRequested    = errors.New("help requested")
+	errVersionRequested = errors.New("version requested")
+)
+
+// globalOption reports which global option appears in args, if any. These are
+// matched before flag parsing because -h is taken by the database host, so
+// help cannot be registered as a regular flag without shadowing it.
+func globalOption(args []string) error {
+	for _, arg := range args {
+		switch arg {
+		case "-help", "--help":
+			return errHelpRequested
+		case "-version", "--version", "-V":
+			return errVersionRequested
+		}
+	}
+	return nil
+}
+
+// printUsage writes the help text: the usage line, the build version, the
+// global options, then the collection options from the registered flag set.
+func printUsage(w io.Writer) {
+	fmt.Fprintf(w, "Usage: radar [options]\n\n")
+	fmt.Fprintf(w, "VERSION:\n   %s\n\n", version)
+	fmt.Fprintf(w, "GLOBAL OPTIONS:\n")
+	fmt.Fprintf(w, "   --help         show help\n")
+	fmt.Fprintf(w, "   --version, -V  print the version\n\n")
+	fmt.Fprintf(w, "Options:\n")
+	flag.CommandLine.SetOutput(w)
+	flag.PrintDefaults()
+}
+
 // defaultDisabledTasks lists task names not run unless -include lists them.
 // pgstattuple_approx() reads heap pages of every user table.
 var defaultDisabledTasks = []string{"pgstattuple"}
@@ -248,7 +284,14 @@ var (
 // main is the radar entry point.
 func main() {
 	cfg, err := parseConfig()
-	if err != nil {
+	switch {
+	case errors.Is(err, errHelpRequested):
+		printUsage(os.Stdout)
+		return
+	case errors.Is(err, errVersionRequested):
+		fmt.Printf("radar version %s\n", version)
+		return
+	case err != nil:
 		errorLog.Println(err)
 		flag.Usage()
 		os.Exit(ExitUsageError)
@@ -328,10 +371,7 @@ func main() {
 func parseConfig() (*Config, error) {
 	cfg := &Config{}
 
-	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: radar [options]\n\nOptions:\n")
-		flag.PrintDefaults()
-	}
+	flag.Usage = func() { printUsage(os.Stderr) }
 
 	flag.StringVar(&cfg.Host, "h", "", "database host")
 	flag.IntVar(&cfg.Port, "p", DefaultPostgresPort, "database port")
@@ -350,6 +390,13 @@ func parseConfig() (*Config, error) {
 	flag.StringVar(&includeRaw, "include", "", "comma-separated default-disabled task names to enable (e.g. pgstattuple, disabled by default)")
 	flag.BoolVar(&cfg.Verbose, "v", false, "verbose output (summary)")
 	flag.BoolVar(&cfg.VeryVerbose, "vv", false, "very verbose output (detailed)")
+
+	// Checked after registration so printUsage can list the options above,
+	// but before parsing so --help and --version are not parse errors.
+	if err := globalOption(os.Args[1:]); err != nil {
+		return nil, err
+	}
+
 	flag.Parse()
 
 	for _, raw := range strings.Split(excludeRaw, ",") {

@@ -13,6 +13,7 @@ package main
 import (
 	"archive/zip"
 	"bytes"
+	"errors"
 	"flag"
 	"io"
 	"os"
@@ -934,6 +935,87 @@ func TestLazyZipWriterNoWrite(t *testing.T) {
 	}
 	if len(reader.File) != 0 {
 		t.Errorf("expected 0 files in zip, got %d", len(reader.File))
+	}
+}
+
+// TestGlobalOptions tests that --help and --version are recognised before flag
+// parsing, and that -h stays bound to the database host.
+func TestGlobalOptions(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	tests := []struct {
+		name string
+		args []string
+		want error
+	}{
+		{"--help", []string{"radar", "--help"}, errHelpRequested},
+		{"-help", []string{"radar", "-help"}, errHelpRequested},
+		{"--version", []string{"radar", "--version"}, errVersionRequested},
+		{"-version", []string{"radar", "-version"}, errVersionRequested},
+		{"-V", []string{"radar", "-V"}, errVersionRequested},
+		{"help after other flags", []string{"radar", "-d", "testdb", "--help"}, errHelpRequested},
+		{"no global option", []string{"radar", "-d", "testdb"}, nil},
+		{"-h is the database host", []string{"radar", "-h", "localhost"}, nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
+			os.Args = tt.args
+
+			cfg, err := parseConfig()
+			if !errors.Is(err, tt.want) {
+				t.Fatalf("parseConfig() error = %v, want %v", err, tt.want)
+			}
+			if tt.want != nil {
+				return
+			}
+			if cfg == nil {
+				t.Fatal("expected a config when no global option was given")
+			}
+			if tt.name == "-h is the database host" && cfg.Host != "localhost" {
+				t.Errorf("expected host 'localhost', got %q", cfg.Host)
+			}
+		})
+	}
+}
+
+// TestPrintUsage tests that the help text carries the version and global
+// options sections alongside the registered collection flags.
+func TestPrintUsage(t *testing.T) {
+	flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
+	os.Args = []string{"radar", "--help"}
+	if _, err := parseConfig(); !errors.Is(err, errHelpRequested) {
+		t.Fatalf("parseConfig() error = %v, want errHelpRequested", err)
+	}
+
+	var buf bytes.Buffer
+	printUsage(&buf)
+	got := buf.String()
+
+	want := []string{
+		"Usage: radar [options]",
+		"VERSION:\n   " + version,
+		"GLOBAL OPTIONS:",
+		"--help         show help",
+		"--version, -V  print the version",
+		"Options:",
+		"-sslmode string",
+		"database host",
+	}
+	for _, w := range want {
+		if !strings.Contains(got, w) {
+			t.Errorf("usage output missing %q\ngot:\n%s", w, got)
+		}
+	}
+
+	// help and version are matched before parsing, so they must not be
+	// registered as flags and must not appear in the options list.
+	for _, name := range []string{"help", "version", "V"} {
+		if f := flag.CommandLine.Lookup(name); f != nil {
+			t.Errorf("global option -%s must not be a registered flag", name)
+		}
 	}
 }
 
