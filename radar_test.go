@@ -938,25 +938,39 @@ func TestLazyZipWriterNoWrite(t *testing.T) {
 	}
 }
 
-// TestGlobalOptions tests that --help and --version are recognised before flag
-// parsing, and that -h stays bound to the database host.
+// TestGlobalOptions tests that -help and -version are answered whatever else
+// is on the command line, that no other flag takes effect when they are, and
+// that -help outranks -version when both are given.
 func TestGlobalOptions(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
 
 	tests := []struct {
-		name string
-		args []string
-		want error
+		name  string
+		args  []string
+		want  error
+		check func(*testing.T, *Config)
 	}{
-		{"--help", []string{"radar", "--help"}, errHelpRequested},
-		{"-help", []string{"radar", "-help"}, errHelpRequested},
-		{"--version", []string{"radar", "--version"}, errVersionRequested},
-		{"-version", []string{"radar", "-version"}, errVersionRequested},
-		{"-V", []string{"radar", "-V"}, errVersionRequested},
-		{"help after other flags", []string{"radar", "-d", "testdb", "--help"}, errHelpRequested},
-		{"no global option", []string{"radar", "-d", "testdb"}, nil},
-		{"-h is the database host", []string{"radar", "-h", "localhost"}, nil},
+		{name: "--help", args: []string{"radar", "--help"}, want: errHelpRequested},
+		{name: "-help", args: []string{"radar", "-help"}, want: errHelpRequested},
+		{name: "--version", args: []string{"radar", "--version"}, want: errVersionRequested},
+		{name: "-version", args: []string{"radar", "-version"}, want: errVersionRequested},
+		{name: "-V", args: []string{"radar", "-V"}, want: errVersionRequested},
+		{name: "help outranks version", args: []string{"radar", "--version", "--help"}, want: errHelpRequested},
+		{name: "help outranks version whatever the order", args: []string{"radar", "--help", "--version"}, want: errHelpRequested},
+		{name: "help outranks an unparseable flag", args: []string{"radar", "-nosuchflag", "--help"}, want: errHelpRequested},
+		{name: "version outranks an unparseable flag", args: []string{"radar", "-nosuchflag", "-V"}, want: errVersionRequested},
+		{name: "help outranks a collection flag", args: []string{"radar", "-d", "testdb", "--help"}, want: errHelpRequested},
+		{name: "neither given", args: []string{"radar", "-d", "testdb"}},
+		{
+			name: "-h is the database host",
+			args: []string{"radar", "-h", "localhost"},
+			check: func(t *testing.T, cfg *Config) {
+				if cfg.Host != "localhost" {
+					t.Errorf("host = %q, want %q", cfg.Host, "localhost")
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -969,21 +983,28 @@ func TestGlobalOptions(t *testing.T) {
 				t.Fatalf("parseConfig() error = %v, want %v", err, tt.want)
 			}
 			if tt.want != nil {
+				if cfg != nil {
+					t.Errorf("expected no config alongside %v, got %+v", tt.want, cfg)
+				}
 				return
 			}
 			if cfg == nil {
-				t.Fatal("expected a config when no global option was given")
+				t.Fatal("expected a config when neither option was given")
 			}
-			if tt.name == "-h is the database host" && cfg.Host != "localhost" {
-				t.Errorf("expected host 'localhost', got %q", cfg.Host)
+			if tt.check != nil {
+				tt.check(t, cfg)
 			}
 		})
 	}
 }
 
-// TestPrintUsage tests that the help text carries the version and global
-// options sections alongside the registered collection flags.
+// TestPrintUsage tests that the help text lists the global options above the
+// collection flags. It must carry nothing build-dependent, because it is
+// pasted verbatim into README.md and docs/index.md.
 func TestPrintUsage(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
 	flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
 	os.Args = []string{"radar", "--help"}
 	if _, err := parseConfig(); !errors.Is(err, errHelpRequested) {
@@ -996,7 +1017,6 @@ func TestPrintUsage(t *testing.T) {
 
 	want := []string{
 		"Usage: radar [options]",
-		"VERSION:\n   " + version,
 		"GLOBAL OPTIONS:",
 		"--help         show help",
 		"--version, -V  print the version",
@@ -1010,12 +1030,19 @@ func TestPrintUsage(t *testing.T) {
 		}
 	}
 
-	// help and version are matched before parsing, so they must not be
-	// registered as flags and must not appear in the options list.
+	if strings.Contains(got, version) {
+		t.Errorf("usage output must not carry the build version\ngot:\n%s", got)
+	}
+
+	// The global options are answered before parsing, so registering them
+	// would list a second, unreachable copy among the collection flags.
 	for _, name := range []string{"help", "version", "V"} {
-		if f := flag.CommandLine.Lookup(name); f != nil {
-			t.Errorf("global option -%s must not be a registered flag", name)
+		if flag.CommandLine.Lookup(name) != nil {
+			t.Errorf("-%s must not be a registered flag", name)
 		}
+	}
+	if f := flag.CommandLine.Lookup("h"); f == nil || f.Usage != "database host" {
+		t.Error("-h must stay bound to the database host")
 	}
 }
 

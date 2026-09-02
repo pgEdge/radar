@@ -34,45 +34,28 @@ import (
 // Release builds set it to e.g. "v0.5.0"; unstamped dev builds report "dev".
 var version = "dev"
 
-// errHelpRequested and errVersionRequested are returned by parseConfig when a
-// global option was given instead of a collection request. main prints the
+// errHelpRequested and errVersionRequested are returned by parseConfig when
+// -help or -version was given instead of a collection request. main prints the
 // corresponding output and exits successfully.
 var (
 	errHelpRequested    = errors.New("help requested")
 	errVersionRequested = errors.New("version requested")
 )
 
-// globalOption reports which global option appears in args, if any. These are
-// matched before flag parsing because -h is taken by the database host, so
-// help cannot be registered as a regular flag without shadowing it.
-func globalOption(args []string) error {
-	for _, arg := range args {
-		switch arg {
-		case "-help", "--help":
-			return errHelpRequested
-		case "-version", "--version", "-V":
-			return errVersionRequested
-		}
-	}
-	return nil
-}
-
-// printUsage writes the help text: the usage line, the build version, the
-// global options, then the collection options from the registered flag set.
-// The write error is discarded because flag.PrintDefaults, which emits the
-// rest of the same output, discards its own.
+// printUsage writes the help text: the usage line, the global options, then
+// the collection options from the registered flag set. It carries nothing
+// build-dependent, because it is pasted verbatim into README.md and
+// docs/index.md. The write error is discarded because flag.PrintDefaults,
+// which emits the rest of the same output, discards its own.
 func printUsage(w io.Writer) {
-	_, _ = fmt.Fprintf(w, `Usage: radar [options]
-
-VERSION:
-   %s
+	_, _ = fmt.Fprint(w, `Usage: radar [options]
 
 GLOBAL OPTIONS:
    --help         show help
    --version, -V  print the version
 
 Options:
-`, version)
+`)
 	flag.CommandLine.SetOutput(w)
 	flag.PrintDefaults()
 }
@@ -398,10 +381,14 @@ func parseConfig() (*Config, error) {
 	flag.BoolVar(&cfg.Verbose, "v", false, "verbose output (summary)")
 	flag.BoolVar(&cfg.VeryVerbose, "vv", false, "very verbose output (detailed)")
 
-	// Checked after registration so printUsage can list the options above,
-	// but before parsing so --help and --version are not parse errors.
-	if err := globalOption(os.Args[1:]); err != nil {
-		return nil, err
+	// Read after registration so printUsage can list the options above, and
+	// before parsing so that neither a collection flag nor a typo elsewhere
+	// stops radar answering. Help outranks version when both are given.
+	switch args := os.Args[1:]; {
+	case slices.Contains(args, "-help"), slices.Contains(args, "--help"):
+		return nil, errHelpRequested
+	case slices.Contains(args, "-version"), slices.Contains(args, "--version"), slices.Contains(args, "-V"):
+		return nil, errVersionRequested
 	}
 
 	flag.Parse()
