@@ -30,15 +30,20 @@ Download pre-built binaries from [GitHub Releases](https://github.com/pgEdge/rad
 ## Quick Start
 
 ```bash
-# Collect both system and PostgreSQL data
-./radar -d mydatabase
+# Collect system and PostgreSQL data (the default)
+./radar -d mydatabase -U databaseuser
 
 # System data only
 ./radar --skip-postgres
 
 # PostgreSQL data only
-./radar -d mydatabase --skip-system
+./radar -d mydatabase -U databaseuser --skip-system
 ```
+
+Both connection flags are optional:
+
+- `-U` falls back to `PGUSER`, then to the current OS user
+- `-d` falls back to `PGDATABASE`, then to `postgres` (except with `--skip-system`, when it requires an explicit database name or PGDATABASE)
 
 ## Permissions & Security
 
@@ -143,7 +148,7 @@ Options:
 
 - **Password** — use `-U` and `PGPASSWORD`, or rely on OS user defaults
 - **LDAP** — server-side only; no client changes needed. Supply credentials as normal
-- **Certificate** — use `-sslmode verify-full -sslcert client.crt -sslkey client.key -sslrootcert ca.crt`
+- **Certificate** — use `--sslmode verify-full --sslcert client.crt --sslkey client.key --sslrootcert ca.crt`
 - **GSSAPI/Kerberos** — ensure a valid Kerberos ticket is present (`kinit`); radar will use it automatically
 
 ### Sample Output
@@ -197,7 +202,7 @@ For a complete reference of all collected data, see [data.md](data.md).
 
 **[PgBouncer](https://www.pgbouncer.org/)** (if installed)
 
-- **Pooler configuration**: the `[pgbouncer]` section of `pgbouncer.ini`, plus a listing of the configuration directory. Values outside `[pgbouncer]` are removed, because `[databases]` connection strings routinely contain `password=`, and comments are dropped entirely. `userlist.txt` is recorded as a directory entry only: it holds credentials and its contents are never collected. Use `-pgbouncer-conf` for a configuration directory outside the usual locations
+- **Pooler configuration**: the `[pgbouncer]` section of `pgbouncer.ini`, plus a listing of the configuration directory. Values outside `[pgbouncer]` are removed, because `[databases]` connection strings routinely contain `password=`, and comments are dropped entirely. `userlist.txt` is recorded as a directory entry only: it holds credentials and its contents are never collected. Use `--pgbouncer-conf` for a configuration directory outside the usual locations
 
 **[Spock](https://github.com/pgEdge/spock) Extension** (if present)
 

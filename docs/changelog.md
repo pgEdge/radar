@@ -7,7 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.6.2] - 2026-09-02
+## [0.6.2] - 2026-09-03
 
 ### Changed
 - `--version` and `-V` options - print the radar version
