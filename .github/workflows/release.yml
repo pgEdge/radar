@@ -13,7 +13,7 @@
 #      as their build inputs — so packaging never needs a pre-existing
 #      release, and pushes stay tag-only (see push-dnf/push-apt).
 #   2. Build RPMs (almalinux 9/10, amd64+arm64) and DEBs (jammy / noble /
-#      bullseye / bookworm / trixie, amd64+arm64) via pgedge-builder-action.
+#      bookworm / trixie, amd64+arm64) via pgedge-builder-action.
 #      radar ships a raw binary, so each cell consumes the staged
 #      release-artifacts/radar-linux-<arch> directly — there is no
 #      re-tar / normalize step (unlike the tarball-based pipelines).
@@ -107,7 +107,7 @@ jobs:
                   # emits cells with pg_version="" (see pgedge-detect-build-matrix README).
                   archs: '["amd64","arm64"]'
                   rpm_images: '["almalinux:9","almalinux:10"]'
-                  deb_images: '["ubuntu:jammy","ubuntu:noble","ubuntu:resolute","debian:bullseye","debian:bookworm","debian:trixie"]'
+                  deb_images: '["ubuntu:jammy","ubuntu:noble","ubuntu:resolute","debian:bookworm","debian:trixie"]'
 
     # =========================================================================
     # Tag parsing → (repo_type, component-version, component-buildnum).  On
