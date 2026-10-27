@@ -1,181 +1,308 @@
 # Changelog
 
-All notable changes to the pgEdge radar project will be
-documented in this file.
+All notable changes to the pgEdge radar project will be documented in this
+file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/),
-and this project adheres to
+The format is based on [Keep a Changelog](https://keepachangelog.com/), and
+this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.6.3] - 2026-10-27
+
+### Added
+
+- The documentation describes installing radar from the pgEdge Enterprise
+  Postgres repository and from the pre-built binaries on GitHub, with checksum
+  verification.
+- The documentation describes the `-exclude` and `-include` options, and how to
+  find collector names with `-vv`.
+
+### Changed
+
+- The build instructions clone the pgEdge radar repository and require Go
+  1.25.12 or later.
+- The published data reference covers the control file, log directory,
+  subscription statistics, freeze age, Spock, and PgBouncer collectors.
+- The documentation names the minimum PostgreSQL version of each collector that
+  needs one, and describes the archive layout and the summary line in detail.
 
 ## [0.6.2] - 2026-09-03
 
 ### Changed
-- `--version` and `-V` options - print the radar version
-- `--help` writes to stdout rather than stderr
-- `--help` and `--version` override every other option; `--help` wins when both are given
+
+- The `--version` and `-V` options print the radar version.
+- The `--help` option writes to `stdout` rather than `stderr`.
+- The `--help` and `--version` options override every other option; `--help`
+  wins when both are given.
 
 ### Security
-- Archive created readable only by its owner
-- radar refuses to write to an existing output path instead of truncating it
+
+- radar creates the archive so that only its owner can read it.
+- radar refuses to write to an existing output path instead of truncating it.
 
 ### Fixed
-- `radar.out` carried no modification time
+
+- The `radar.out` archive entry had no modification time.
 
 ## [0.6.1] - 2026-09-01
 
 ### Fixed
-- `--help` capture in README.md and docs/index.md regenerated from the real CLI
+
+- This release regenerates the `--help` capture in README.md and docs/index.md
+  from the real CLI.
 
 ## [0.6.0] - 2026-09-01
 
 ### Added
 
 #### PostgreSQL
-- `control_checkpoint`, `control_init`, `control_recovery`, `control_system` collectors - `pg_controldata` content through the `pg_control_*()` functions, so neither the data directory nor a matching server binary is needed
-- `stat_subscription_stats` collector - per-subscription apply and sync error counts, and per-kind conflict counters (PG15+)
-- `log_directory` collector - server log directory listing from `pg_ls_logdir()`: name, size and modification time per file, never contents. Readable by `pg_monitor` and needs no filesystem access
+
+- The `control_checkpoint`, `control_init`, `control_recovery` and
+  `control_system` collectors record the `pg_controldata` content through the
+  `pg_control_*()` functions, so neither the data directory nor a matching
+  server binary is needed.
+- The `stat_subscription_stats` collector records per-subscription apply and
+  sync error counts, and per-kind conflict counters (PG15+).
+- The `log_directory` collector lists the server log directory from
+  `pg_ls_logdir()`, with the name, size and modification time of each file but
+  never its contents. The listing is readable by `pg_monitor` and needs no
+  filesystem access.
 
 #### Per-database
-- `table_freeze_age` collector - top 1000 relations by transaction-ID and multixact freeze age, ranked by age rather than size, and reaching the `pg_catalog` and `pg_toast` relations that `tables` excludes
-- `relfrozenxid_age` and `relminmxid_age` columns in the `tables` collector - per-table transaction-ID and multixact freeze age, empty for partitioned tables, which hold no tuples of their own
+
+- The `table_freeze_age` collector records the top 1000 relations by
+  transaction-ID and multixact freeze age. The collector ranks relations by age
+  rather than size, and includes the `pg_catalog` and `pg_toast` relations that
+  `tables` excludes.
+- The `tables` collector adds the `relfrozenxid_age` and `relminmxid_age`
+  columns, which record the transaction-ID and multixact freeze age of each
+  table. Both columns are empty for partitioned tables, which hold no tuples of
+  their own.
 
 #### pg_statviz
-- `blocking` collector - blocking lock history: blocked and blocker counts plus per-lock-type counts (pg_statviz 1.2+)
+
+- The `blocking` collector records the blocking lock history, with blocked and
+  blocker counts plus per-lock-type counts (pg_statviz 1.2+).
 
 #### Spock
-- 13 collectors under `spock/<db>/`, skipped when Spock is not installed: `channel_summary_stats`, `exception_log`, `lag_tracker`, `local_node`, `local_sync_status`, `node`, `pii`, `progress`, `replication_set`, `replication_set_table`, `resolutions`, `subscription`, `tables`
+
+- This release adds 13 collectors under `spock/<db>/`: `channel_summary_stats`,
+  `exception_log`, `lag_tracker`, `local_node`, `local_sync_status`, `node`,
+  `pii`, `progress`, `replication_set`, `replication_set_table`, `resolutions`,
+  `subscription` and `tables`. radar skips these collectors when Spock is not
+  installed.
 
 #### PgBouncer
-- `pgbouncer.ini` collector - the `[pgbouncer]` section verbatim; every other section keeps its key names and loses its values, and comments are dropped wherever they appear
-- `pgbouncer_files` collector - listing of the configuration directory. `userlist.txt` is recorded as an entry only, never read
-- Collected without a database connection, so pooler configuration reaches the archive even when the instance is unreachable
-- `-pgbouncer-conf` flag - PgBouncer configuration directory outside `/etc/pgbouncer` and `/usr/local/etc/pgbouncer`. A path given here that does not exist is a failure rather than a silent skip
+
+- The `pgbouncer.ini` collector records the `[pgbouncer]` section verbatim.
+  Every other section keeps its key names and loses its values, and the
+  collector drops comments wherever they appear.
+- The `pgbouncer_files` collector lists the configuration directory. The
+  collector records `userlist.txt` as an entry only and never reads the file.
+- The PgBouncer collectors run without a database connection, so the pooler
+  configuration reaches the archive even when the instance is unreachable.
+- The `-pgbouncer-conf` flag specifies a PgBouncer configuration directory
+  outside `/etc/pgbouncer` and `/usr/local/etc/pgbouncer`. A nonexistent path
+  given to this flag is a failure rather than a silent skip.
 
 ## [0.5.1] - 2026-08-06
 
 ### Security
-- Go toolchain updated to 1.25.12 (1.24 is end-of-life) - fixes `crypto/tls`, `crypto/x509`, `net`, `net/url` and `os` vulnerabilities
-- `github.com/jackc/pgx/v5` updated to v5.10.0 - fixes a SQL injection issue
-- `golang.org/x/text` updated to v0.40.0 - fixes an infinite loop in `norm.Iter`
+
+- This release updates the Go toolchain to 1.25.12 (1.24 is end-of-life); the
+  update fixes vulnerabilities in `crypto/tls`, `crypto/x509`, `net`, `net/url`
+  and `os`.
+- This release updates `github.com/jackc/pgx/v5` to v5.10.0, which fixes a SQL
+  injection issue.
+- This release updates `golang.org/x/text` to v0.40.0, which fixes an infinite
+  loop in `norm.Iter`.
 
 ## [0.5.0] - 2026-05-08
 
 ### Added
 
 #### PostgreSQL
-- `stat_ssl` collector - per-backend SSL/TLS state
-- `stat_replication_slots` collector - replication slot spill counters (PG14+)
+
+- The `stat_ssl` collector records the SSL/TLS state of each backend.
+- The `stat_replication_slots` collector records replication slot spill
+  counters (PG14+).
 
 #### Per-database
-- `sequences` collector - sequences with last/min/max values (PG10+)
-- `bloat` collector - heuristic table bloat estimate from `pg_stats`
-- `pgstattuple` collector - authoritative bloat via `pgstattuple_approx()`; opt-in with `-include pgstattuple`
+
+- The `sequences` collector records sequences with their last, minimum and
+  maximum values (PG10+).
+- The `bloat` collector records a heuristic table bloat estimate from
+  `pg_stats`.
+- The `pgstattuple` collector measures bloat through `pgstattuple_approx()`;
+  users opt in with `-include pgstattuple`.
 
 #### CLI
-- `-exclude name1,name2` flag - skip named tasks
-- `-include name1,name2` flag - enable default-disabled tasks
+
+- The `-exclude name1,name2` flag skips the named tasks.
+- The `-include name1,name2` flag enables named tasks that are disabled by
+  default.
 
 ### Changed
-- `databases` collector adds `datfrozenxid`, `datminmxid`, `datconnlimit`, `datistemplate`, `datallowconn`
-- `tables` collector rebuilt on `pg_class` + `pg_stat_all_tables`; adds dead-tup counters, vacuum/analyze timestamps + ages, `reloptions`, `relpersistence`, `relpages`, heap/table/toast sizes; capped at top 1000 by size
-- `indexes` collector rebuilt on `pg_index` + `pg_stat_all_indexes`; adds semantic-key columns, `indisvalid`, `idx_scan`/`idx_tup_read`/`idx_tup_fetch`, `relpages`, `index_size`; capped at top 1000 by size
-- `running_activity_maxage` collector adds `max_lock_wait_age`
-- `available_extensions` collector now sourced from `pg_available_extension_versions` (one row per version with trust/requires/schema metadata)
-- Archive root now contains `radar.out` with the radar binary's `version` (build-time stamp) and `commit`
+
+- The `databases` collector adds the `datfrozenxid`, `datminmxid`,
+  `datconnlimit`, `datistemplate` and `datallowconn` columns.
+- This release rebuilds the `tables` collector on `pg_class` and
+  `pg_stat_all_tables`. The collector adds dead-tuple counters, vacuum and
+  analyze timestamps and ages, `reloptions`, `relpersistence`, `relpages`, and
+  heap, table and toast sizes. The collector caps its output at the top 1000
+  tables by size.
+- This release rebuilds the `indexes` collector on `pg_index` and
+  `pg_stat_all_indexes`. The collector adds semantic-key columns, `indisvalid`,
+  `idx_scan`, `idx_tup_read`, `idx_tup_fetch`, `relpages` and `index_size`, and
+  caps its output at the top 1000 indexes by size.
+- The `running_activity_maxage` collector adds `max_lock_wait_age`.
+- The `available_extensions` collector now reads from
+  `pg_available_extension_versions` (one row per version with
+  trust/requires/schema metadata).
+- The archive root now contains `radar.out`, which records the radar binary's
+  `version` (build-time stamp) and `commit`.
 
 ### Fixed
-- `read_ahead` collector ignored virtio/xen block devices and produced unlabeled output
-- `hostname.out` reported resolver-canonical FQDN instead of kernel hostname; added `hostname_fqdn.out` for the FQDN
-- `pg_table_size`/`pg_relation_size` called for every relation pre-sort caused fstat overload on >1000-table clusters; now uses `relpages × block_size` estimate with fstat fallback for `relpages = 0` rows
+
+- The `read_ahead` collector ignored virtio/xen block devices and produced
+  unlabeled output.
+- The `hostname.out` entry reported the resolver-canonical fully qualified
+  domain name (FQDN) instead of the kernel hostname. This release adds
+  `hostname_fqdn.out` to record that name.
+- Calling `pg_table_size` and `pg_relation_size` for every relation before
+  sorting caused fstat overload on clusters with more than 1000 tables. radar
+  now uses a `relpages × block_size` estimate, with an fstat fallback for rows
+  where `relpages = 0`.
 
 ## [0.4.1] - 2026-04-15
 
 ### Fixed
-- Missing PostgreSQL extensions (pg_stat_statements, pg_statviz) no longer reported as errors when not installed
+
+- radar no longer reports missing PostgreSQL extensions (pg_stat_statements,
+  pg_statviz) as errors when they are not installed.
 
 ## [0.4.0] - 2026-04-01
 
 ### Added
 
 #### System (Linux)
-- Cgroup v2 resource limit collectors (cpu.max, memory.max, memory.current, pids, cpuset, io.max, etc.)
-- Cgroup v1 resource limit collectors (cpu.shares, cpu.cfs_quota, memory.limit, etc.)
-- Container identity collectors (cgroup membership, mountinfo, environment, K8s namespace)
-- Cloud/hardware identity collectors (DMI bios_vendor, product_name, sys_vendor, chassis_asset_tag)
-- Auto-detection of container runtime (Docker, Kubernetes, containerd, LXC)
+
+- This release adds cgroup v2 resource limit collectors (cpu.max, memory.max,
+  memory.current, pids, cpuset, io.max, etc.).
+- This release adds cgroup v1 resource limit collectors (cpu.shares,
+  cpu.cfs_quota, memory.limit, etc.).
+- This release adds container identity collectors (cgroup membership,
+  mountinfo, environment, Kubernetes namespace).
+- This release adds cloud and hardware identity collectors (DMI bios_vendor,
+  product_name, sys_vendor, chassis_asset_tag).
+- radar automatically detects the container runtime (Docker, Kubernetes,
+  containerd, LXC).
 
 #### Authentication
-- SSL/TLS with configurable `-sslmode` (prefer, disable, require, verify-ca, verify-full)
-- Certificate authentication (`-sslcert`, `-sslkey`, `-sslrootcert`)
-- GSSAPI/Kerberos authentication
-- `PGSSLMODE`, `PGSSLCERT`, `PGSSLKEY`, `PGSSLROOTCERT` environment variables
+
+- radar supports SSL/TLS with a configurable `-sslmode` (prefer, disable,
+  require, verify-ca, verify-full).
+- radar supports certificate authentication (`-sslcert`, `-sslkey`,
+  `-sslrootcert`).
+- radar supports GSSAPI/Kerberos authentication.
+- radar reads the `PGSSLMODE`, `PGSSLCERT`, `PGSSLKEY` and `PGSSLROOTCERT`
+  environment variables.
 
 ### Changed
-- PostgreSQL driver switched from lib/pq to pgx
-- Default sslmode changed from `disable` to `prefer`
-- Go bumped from 1.23 to 1.24.13
-- Collector errors now distinguish skip (unavailable) from real failures
+
+- This release switches the PostgreSQL driver from lib/pq to pgx.
+- The default sslmode changes from `disable` to `prefer`.
+- This release updates Go from 1.23 to 1.24.13.
+- Collector errors now distinguish skips (unavailable) from real failures.
 
 ### Fixed
-- db handle leak on ping failure
-- Summary printed before zero-data check
-- PGDATABASE fallback ordering with `--skip-system`
-- Connection string quoting for values with spaces
+
+- radar leaked a database handle when a ping failed.
+- radar printed the summary before the zero-data check.
+- radar applied the PGDATABASE fallback after the `--skip-system` check rather
+  than before it.
+- radar did not quote connection string values that contain spaces.
 
 ## [0.3.0] - 2026-02-26
 
 ### Added
 
 #### System (Linux)
-- `clocksource` collector - current kernel clocksource (tsc/hpet/kvm-clock)
-- `diskstats` collector - raw kernel I/O counters from /proc/diskstats
-- `free` collector - memory usage summary
-- `io-queue-depth` collector - I/O queue depth per block device
-- `lscpu` collector - structured CPU topology (NUMA, cores, threads, caches)
-- `netstat-stats` collector - protocol statistics (retransmits, drops)
-- `numactl` collector - NUMA node layout and memory
-- `numastat` collector - per-node memory allocation statistics
-- `pg-service-status` collector - PostgreSQL systemd service status
-- `resolv.conf` collector - DNS resolver configuration
-- `ss-listeners` collector - listening sockets and ports
-- `ss-summary` collector - socket statistics summary
-- `timedatectl` collector - NTP sync and timezone status
+
+- The `clocksource` collector records the current kernel clocksource
+  (tsc/hpet/kvm-clock).
+- The `diskstats` collector records the raw kernel I/O counters from
+  /proc/diskstats.
+- The `free` collector records a memory usage summary.
+- The `io-queue-depth` collector records the I/O queue depth of each block
+  device.
+- The `lscpu` collector records the structured CPU topology (NUMA, cores,
+  threads, caches).
+- The `netstat-stats` collector records protocol statistics (retransmits,
+  drops).
+- The `numactl` collector records the NUMA node layout and memory.
+- The `numastat` collector records per-node memory allocation statistics.
+- The `pg-service-status` collector records the PostgreSQL systemd service
+  status.
+- The `resolv.conf` collector records the DNS resolver configuration.
+- The `ss-listeners` collector records listening sockets and ports.
+- The `ss-summary` collector records a socket statistics summary.
+- The `timedatectl` collector records the NTP sync and timezone status.
 
 #### System (macOS)
-- `memory-pressure` collector - system memory pressure level
-- `netstat-stats` collector - protocol statistics
-- `ulimit` collector - resource limits
+
+- The `memory-pressure` collector records the system memory pressure level.
+- The `netstat-stats` collector records protocol statistics.
+- The `ulimit` collector records resource limits.
 
 #### PostgreSQL
-- `connection_summary` collector - connection distribution by state and wait event
-- `database_conflicts` collector - recovery conflicts from pg_stat_database_conflicts
-- `database_sizes` collector - disk usage per database
-- `file_settings` collector - config file parse results from pg_file_settings
-- `shmem_allocations` collector - shared memory breakdown from pg_shmem_allocations
-- `stat_progress_cluster` collector - CLUSTER/VACUUM FULL progress
-- `stat_progress_create_index` collector - CREATE INDEX progress
-- `stat_statements_calls` collector - top 100 queries by call count (pg_stat_statements)
-- `stat_statements_max_time` collector - top 100 queries by max execution time (pg_stat_statements)
-- `stat_statements_total_time` collector - top 100 queries by total execution time (pg_stat_statements)
-- `tablespace_sizes` collector - tablespace disk usage
-- `wal_position` collector - WAL position and recovery state
-- `wal_receiver` collector - standby WAL receiver status
+
+- The `connection_summary` collector records the connection distribution by
+  state and wait event.
+- The `database_conflicts` collector records recovery conflicts from
+  pg_stat_database_conflicts.
+- The `database_sizes` collector records the disk usage of each database.
+- The `file_settings` collector records configuration file parse results from
+  pg_file_settings.
+- The `shmem_allocations` collector records the shared memory breakdown from
+  pg_shmem_allocations.
+- The `stat_progress_cluster` collector records CLUSTER/VACUUM FULL progress.
+- The `stat_progress_create_index` collector records CREATE INDEX progress.
+- The `stat_statements_calls` collector records the top 100 queries by call
+  count (pg_stat_statements).
+- The `stat_statements_max_time` collector records the top 100 queries by
+  maximum execution time (pg_stat_statements).
+- The `stat_statements_total_time` collector records the top 100 queries by
+  total execution time (pg_stat_statements).
+- The `tablespace_sizes` collector records tablespace disk usage.
+- The `wal_position` collector records the WAL position and recovery state.
+- The `wal_receiver` collector records the standby WAL receiver status.
 
 #### Testing
-- Duplicate archive path detection tests for system and PostgreSQL collectors
+
+- This release adds tests that detect duplicate archive paths for the system
+  and PostgreSQL collectors.
 
 ## [0.2.0] - 2025-12-23
 
 ### Added
-- `pg_stat_checkpointer` collector (PostgreSQL 17+) - checkpoint operations
-- `pg_stat_io` collector (PostgreSQL 16+) - I/O statistics by backend type
-- `pg_stat_wal` collector (PostgreSQL 14+) - WAL generation statistics
-- `pg_postmaster_start_time()` collector - server startup timestamp
-- `pg_stat_database` per-database collector - conflicts, deadlocks, temp files
+
+- The `pg_stat_checkpointer` collector (PostgreSQL 17+) records checkpoint
+  operations.
+- The `pg_stat_io` collector (PostgreSQL 16+) records I/O statistics by backend
+  type.
+- The `pg_stat_wal` collector (PostgreSQL 14+) records WAL generation
+  statistics.
+- The `pg_postmaster_start_time()` collector records the server startup
+  timestamp.
+- The `pg_stat_database` per-database collector records conflicts, deadlocks
+  and temporary files.
 
 ## [0.1.0] - 2025-12-18
 
 ### Added
-- Initial release
-- Static binaries for Linux (amd64, arm64) and macOS (amd64, arm64)
-- Comprehensive system and PostgreSQL metrics collection
+
+- This is the initial release.
+- The release includes static binaries for Linux (amd64, arm64) and macOS
+  (amd64, arm64).
+- radar collects comprehensive system and PostgreSQL metrics.
