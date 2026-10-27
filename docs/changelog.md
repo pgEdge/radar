@@ -25,6 +25,8 @@ this project adheres to
   subscription statistics, freeze age, Spock, and PgBouncer collectors.
 - The documentation names the minimum PostgreSQL version of each collector that
   needs one, and describes the archive layout and the summary line in detail.
+- The documentation warns that an archive can contain passwords and other
+  secrets, and asks you to review an archive before you share it.
 
 ## [0.6.2] - 2026-09-03
 

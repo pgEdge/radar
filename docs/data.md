@@ -246,8 +246,10 @@ table describes the files that these collectors produce:
 ## Collecting PostgreSQL Instance Data
 
 The PostgreSQL instance collectors gather instance-level data and store their
-files in the `postgresql/` directory. The following table describes the files
-that these collectors produce:
+files in the `postgresql/` directory. radar copies the configuration files as
+they are, so they can contain passwords, such as a password in
+`primary_conninfo` on a standby. The following table describes the files that
+these collectors produce:
 
 | File | Source | Description |
 |------|--------|-------------|

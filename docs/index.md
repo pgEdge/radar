@@ -464,18 +464,21 @@ message embeds a value still includes that value.
 
 ### Protecting Sensitive Data
 
-radar collects metadata only, and never collects user data, query results, or
-table contents. However, a collected archive may contain sensitive
-configuration information, including:
+radar collects metadata and statistics, and does not collect table contents or
+query result sets. A collected archive includes:
 
 - database and table names, schemas, and object definitions.
-- PostgreSQL configuration settings, without passwords.
+- PostgreSQL configuration files and settings.
 - system configuration and resource utilization metrics.
-- active connection counts and database statistics.
+- active connection counts, database statistics, and query text.
 
-radar does not collect passwords, query result data, table contents, or
-user-generated data. Review the contents of an archive before you share the
-archive outside your organization.
+!!! warning
+
+    A collected archive can contain passwords and other secrets. PostgreSQL
+    configuration files and settings can hold connection passwords, such as a
+    password in `primary_conninfo` on a standby, and query text and error
+    messages can include values from user queries. Review the contents of an
+    archive before you share it outside your organization.
 
 ## Support & Resources
 
