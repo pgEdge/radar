@@ -126,8 +126,9 @@ table describes the files that these collectors produce:
 ### Reading Cgroup v2 Resource Limits
 
 radar attempts the cgroup v2 collectors on Linux and skips any collector whose
-source is unavailable. These files show the actual container resource limits
-instead of the host values. The following table describes the cgroup v2 files:
+source is unavailable. Inside a container, these files show the container's
+resource limits; on a host, they show the values of the cgroup that radar runs
+in. The following table describes the cgroup v2 files:
 
 | File | Source | Description |
 |------|--------|-------------|
@@ -329,7 +330,7 @@ that these collectors produce for each database:
 | `operators.tsv` | `pg_operator` | Lists the operators. |
 | `partitioned_tables.tsv` | `pg_partitioned_table` | Lists the partitioned tables (PostgreSQL 10 and later). |
 | `partitions.tsv` | `pg_inherits` | Lists the partition relationships. |
-| `pgstattuple.tsv` | `pgstattuple_approx()` | Reports bloat when the `pgstattuple` extension is installed, with exact dead-tuple figures and approximate live-tuple and free-space figures. The collector is disabled by default because it reads every heap page that the visibility map does not mark all-visible, in every user table; run radar with `-include pgstattuple` to enable the collector. |
+| `pgstattuple.tsv` | `pgstattuple_approx()` | Reports bloat when the `pgstattuple` extension is installed, with exact dead-tuple figures and approximate live-tuple and free-space figures. The collector is disabled by default because it reads every heap page that the visibility map does not mark all-visible, in every user table; run radar with `--include pgstattuple` to enable the collector. |
 | `procs.tsv` | `pg_proc WHERE prokind='p'` | Lists the procedures (PostgreSQL 11 and later). |
 | `publication_tables.tsv` | `pg_publication_tables` | Lists the tables in publications. |
 | `publications.tsv` | `pg_publication` | Lists the logical replication publications. |
@@ -411,7 +412,7 @@ the first of `/etc/pgbouncer/` and `/usr/local/etc/pgbouncer/` that exists.
 radar does not fall back to the second directory when the first directory lacks
 a file. When neither directory exists, radar treats PgBouncer as not installed
 and skips these collectors. radar uses a directory named with the
-`-pgbouncer-conf` option as given, and treats a wrong path as a failure rather
+`--pgbouncer-conf` option as given, and treats a wrong path as a failure rather
 than a skip. These collectors need no database connection, so radar collects
 the files even when the PostgreSQL instance is unreachable.
 
@@ -423,5 +424,5 @@ The following table describes the PgBouncer files:
 
 | File | Source | Description |
 |------|--------|-------------|
-| `pgbouncer/pgbouncer.ini` | `pgbouncer.ini` | Contains the `[pgbouncer]` section verbatim, including the pool mode, connection limits, listen address, auth type and auth file. In every other section, radar keeps each key name and replaces its value with `<redacted by radar>`, because `[databases]` and `[peers]` connection strings routinely contain `password=`. radar drops comments entirely, wherever they appear, because a commented-out entry holds a password as readily as a live entry. radar keeps an `%include` line but does not follow the file that the line names. radar reads the file from the `-pgbouncer-conf` directory when given, and otherwise from the first of `/etc/pgbouncer/` and `/usr/local/etc/pgbouncer/` that exists, without falling back to the second. |
+| `pgbouncer/pgbouncer.ini` | `pgbouncer.ini` | Contains the `[pgbouncer]` section without its comments, including the pool mode, connection limits, listen address, auth type and auth file. In every other section, radar keeps each key name and replaces its value with `<redacted by radar>`, because `[databases]` and `[peers]` connection strings routinely contain `password=`. radar drops comments entirely, wherever they appear, because a commented-out entry holds a password as readily as a live entry. radar keeps an `%include` line but does not follow the file that the line names. radar reads the file from the `--pgbouncer-conf` directory when given, and otherwise from the first of `/etc/pgbouncer/` and `/usr/local/etc/pgbouncer/` that exists, without falling back to the second. |
 | `pgbouncer/files.tsv` | filesystem | Lists the regular files in the configuration directory with the name, size and modification time of each file. This listing is how radar records `userlist.txt`. radar leaves out symbolic links and subdirectories, so the listing does not record a `userlist.txt` that is a symbolic link. |

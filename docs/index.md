@@ -288,12 +288,12 @@ Options:
 
 ### Excluding Collectors
 
-The `-exclude` option skips the collectors that you name, and the `-include`
-option enables the collectors that are disabled by default; `-include` takes
-precedence over `-exclude`.
+The `--exclude` option skips the collectors that you name, and the `--include`
+option enables the collectors that are disabled by default; `--include` takes
+precedence over `--exclude`.
 
 Run radar with `-vv` to list each collector by name; for a per-database
-collector, the name after the database prefix is the name that `-exclude`
+collector, the name after the database prefix is the name that `--exclude`
 accepts:
 
 ```text
@@ -304,7 +304,7 @@ accepts:
 The following command skips the `bloat` and `stat_ssl` collectors:
 
 ```bash
-radar -d mydatabase -U databaseuser -exclude bloat,stat_ssl
+radar -d mydatabase -U databaseuser --exclude bloat,stat_ssl
 ```
 
 ### Reading the Archive
@@ -421,7 +421,7 @@ The following table describes the data that radar collects from each database:
 | Functions and procedures | `pg_proc` |
 | Triggers and partitioning | `pg_inherits`, `pg_partitioned_table`, `pg_trigger` |
 | Logical replication | `pg_publication`, `pg_publication_tables`, `pg_subscription_rel` |
-| Extensions | `pg_extension`, `pg_language`, `pg_statistic_ext`, and `pgstattuple`; when `pgstattuple` is installed and `-include pgstattuple` enables the collector, `pgstattuple_approx()` measures bloat, with exact dead-tuple figures. |
+| Extensions | `pg_extension`, `pg_language`, `pg_statistic_ext`, and `pgstattuple`; when `pgstattuple` is installed and `--include pgstattuple` enables the collector, `pgstattuple_approx()` measures bloat, with exact dead-tuple figures. |
 | Statistics | `pg_stat_database`, including conflicts, deadlocks, temporary files, and the statistics reset time. |
 | Bloat estimate | radar always collects a heuristic bloat estimate from `pg_stats`. |
 

@@ -18,10 +18,10 @@ radar is built on the following core principles:
 - radar aims for minimal impact, so the tool should be as lightweight as
   possible and should avoid any changes to the system it runs on. Data
   collection is read-only.
-- radar fails gracefully; if a collector fails (for example, because a command
-  is not installed or a file is not readable), the tool silently skips that
-  collector and moves on. This approach ensures that radar collects as much
-  data as possible without stopping on minor issues.
+- radar fails gracefully; when a command is not installed or a file does not
+  exist, radar skips that collector, and radar reports any other collector
+  failure as an error and moves on. This approach ensures that radar collects
+  as much data as possible without stopping on minor issues.
 - radar is comprehensive by default and aims to collect a wide array of data
   that is commonly needed to diagnose system and database performance issues.
 - radar keeps collection focused on simple, targeted data gathering of raw
@@ -126,8 +126,8 @@ Follow these steps to add a new system collector:
 1. Determine the platform compatibility of the collector, and choose the file
    as follows:
 
-   - If the collector works on all Unix-like systems, add the collector to
-     `system_tasks_shared.go`.
+   - If the collector works on both supported platforms (Linux and macOS), add
+     the collector to `system_tasks_shared.go`.
    - If the collector is Linux-specific (it uses `/proc`, `/sys`, systemd, or
      similar), add the collector to `system_tasks_linux.go`.
    - If the collector is macOS-specific (it uses `sysctl`, `system_profiler`,
@@ -340,7 +340,8 @@ configuration file collector:
 
 When you add a collector, meet the following requirements:
 
-- Update the unit tests in `radar_test.go`.
+- Update the unit tests in the test file for the collector's area, such as
+  `postgres_test.go` or `pgbouncer_test.go`.
 - Update the integration tests if the collector depends on permissions.
 - Test all six integration scenarios, if applicable.
 - Ensure that radar silently handles missing tools and permissions.
@@ -431,9 +432,10 @@ returns. The `getPostgreSQLTasks` and `generateDatabaseTasks` functions in
 radar tracks three states for each collector:
 
 - Collected (`✓`) means that the collector successfully collected data.
-- Skipped (`⊘`) means that the tool or file is unavailable, or that the
-  permissions are insufficient.
-- Failed means that a real error occurred; radar reports the error to the user.
+- Skipped (`⊘`) means that the command or file does not exist, or that the
+  PostgreSQL object is not installed.
+- Failed (`✗`) means that any other error occurred, such as a permission
+  denial; radar reports the error to the user.
 
 The custom error type `SkipError` signals an intentional skip:
 
@@ -462,11 +464,15 @@ go test -v -run TestSkipFlagValidation
 
 ### Running the Local CI Script
 
-The following command runs the complete CI/CD test suite locally:
+The following command runs the CI checks locally, except the macOS job, which
+runs only in GitHub CI:
 
 ```bash
 ./run-ci-local.sh
 ```
+
+The script runs the permission scenarios one after another in a single
+container, whereas GitHub CI runs each scenario in an isolated container.
 
 The script performs the following steps in order:
 
@@ -520,11 +526,11 @@ scenario and the collection that the scenario expects:
 | S2 | Root and PostgreSQL pg_monitor role | radar has full system access with root privileges, and monitoring-level PostgreSQL access to most views with limited configuration access. Some collectors are unavailable (for example, `pg_hba_file_rules` and `subscriptions`). This scenario is the production-safe alternative. | About 71 system collectors, about 51 PostgreSQL collectors, and pg_statviz data. |
 | S3 | Non-root and PostgreSQL superuser | radar has limited system access, because some commands fail without root, and full PostgreSQL access to all views and configuration files. Some system collectors are unavailable (for example, `ifconfig` and `sysctl`). | About 68 system collectors, about 51 PostgreSQL collectors, and pg_statviz data. |
 | S4 | Non-root and PostgreSQL pg_monitor role | radar runs as a non-root user with monitoring-level PostgreSQL access through the pg_monitor role. This scenario combines the limitations of both non-root and pg_monitor, and is the most restricted. | About 68 system collectors, about 47 PostgreSQL collectors, and pg_statviz data. |
-| S5 | Certificate authentication | radar runs as root and connects as the pg_monitor role with a client certificate over TLS. This scenario exercises `-sslmode verify-full` with `-sslcert`, `-sslkey` and `-sslrootcert`. | About 71 system collectors, about 51 PostgreSQL collectors, and pg_statviz data. |
+| S5 | Certificate authentication | radar runs as root and connects as the pg_monitor role with a client certificate over TLS. This scenario exercises `--sslmode verify-full` with `--sslcert`, `--sslkey` and `--sslrootcert`. | About 71 system collectors, about 51 PostgreSQL collectors, and pg_statviz data. |
 | S6 | GSSAPI/Kerberos authentication | radar runs as root and connects as the pg_monitor role with a Kerberos ticket from `kinit`. Because `pg_hba.conf` requires `hostgssenc`, the connection must be GSSAPI-encrypted. | About 71 system collectors, about 51 PostgreSQL collectors, and pg_statviz data. |
 
-All scenarios verify that radar handles permission limitations and collects the
-maximum available data.
+All scenarios verify that radar collects the required data and handles the
+permission limitations of each scenario.
 
 ### Comparing Collector Availability by Scenario
 

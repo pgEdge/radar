@@ -14,8 +14,8 @@ this project adheres to
 - The documentation describes installing radar from the pgEdge Enterprise
   Postgres repository and from the pre-built binaries on GitHub, with checksum
   verification.
-- The documentation describes the `-exclude` and `-include` options, and how to
-  find collector names with `-vv`.
+- The documentation describes the `--exclude` and `--include` options, and how
+  to find collector names with `-vv`.
 
 ### Changed
 
@@ -62,7 +62,7 @@ this project adheres to
   `pg_control_*()` functions, so neither the data directory nor a matching
   server binary is needed.
 - The `stat_subscription_stats` collector records per-subscription apply and
-  sync error counts, and per-kind conflict counters (PG15+).
+  sync error counts (PG15+), and per-kind conflict counters (PG18+).
 - The `log_directory` collector lists the server log directory from
   `pg_ls_logdir()`, with the name, size and modification time of each file but
   never its contents. The listing is readable by `pg_monitor` and needs no
@@ -94,14 +94,14 @@ this project adheres to
 
 #### PgBouncer
 
-- The `pgbouncer.ini` collector records the `[pgbouncer]` section verbatim.
-  Every other section keeps its key names and loses its values, and the
-  collector drops comments wherever they appear.
+- The `pgbouncer.ini` collector records the `[pgbouncer]` section without its
+  comments. Every other section keeps its key names and loses its values, and
+  the collector drops comments wherever they appear.
 - The `pgbouncer_files` collector lists the configuration directory. The
   collector records `userlist.txt` as an entry only and never reads the file.
 - The PgBouncer collectors run without a database connection, so the pooler
   configuration reaches the archive even when the instance is unreachable.
-- The `-pgbouncer-conf` flag specifies a PgBouncer configuration directory
+- The `--pgbouncer-conf` flag specifies a PgBouncer configuration directory
   outside `/etc/pgbouncer` and `/usr/local/etc/pgbouncer`. A nonexistent path
   given to this flag is a failure rather than a silent skip.
 
@@ -134,12 +134,12 @@ this project adheres to
 - The `bloat` collector records a heuristic table bloat estimate from
   `pg_stats`.
 - The `pgstattuple` collector measures bloat through `pgstattuple_approx()`;
-  users opt in with `-include pgstattuple`.
+  users opt in with `--include pgstattuple`.
 
 #### CLI
 
-- The `-exclude name1,name2` flag skips the named tasks.
-- The `-include name1,name2` flag enables named tasks that are disabled by
+- The `--exclude name1,name2` flag skips the named tasks.
+- The `--include name1,name2` flag enables named tasks that are disabled by
   default.
 
 ### Changed
@@ -200,10 +200,10 @@ this project adheres to
 
 #### Authentication
 
-- radar supports SSL/TLS with a configurable `-sslmode` (prefer, disable,
+- radar supports SSL/TLS with a configurable `--sslmode` (prefer, disable,
   require, verify-ca, verify-full).
-- radar supports certificate authentication (`-sslcert`, `-sslkey`,
-  `-sslrootcert`).
+- radar supports certificate authentication (`--sslcert`, `--sslkey`,
+  `--sslrootcert`).
 - radar supports GSSAPI/Kerberos authentication.
 - radar reads the `PGSSLMODE`, `PGSSLCERT`, `PGSSLKEY` and `PGSSLROOTCERT`
   environment variables.
