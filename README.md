@@ -204,6 +204,8 @@ The following table describes the environment variables that radar reads:
 | `PGSSLCERT` | Specifies the client SSL certificate file. |
 | `PGSSLKEY` | Specifies the client SSL private key file. |
 | `PGSSLROOTCERT` | Specifies the SSL root (CA) certificate file. |
+| `KRB5CCNAME` | Names the Kerberos credential cache for GSSAPI authentication; radar reads only a `FILE:` cache, and the default is `/tmp/krb5cc_<uid>`. |
+| `KRB5_CONFIG` | Names the Kerberos configuration file; the default is `/etc/krb5.conf`. |
 
 The pgx driver also applies the other libpq environment variables that radar
 does not set itself, such as `PGAPPNAME` and `PGCONNECT_TIMEOUT`.
@@ -218,7 +220,7 @@ method:
 | Password | Supply the user with `-U` and the password with `PGPASSWORD`, or rely on the operating system user defaults. |
 | LDAP | The server performs LDAP authentication, so the client needs no changes; supply the user name and password as for password authentication. |
 | Certificate | Run radar with `--sslmode verify-full --sslcert client.crt --sslkey client.key --sslrootcert ca.crt`. |
-| GSSAPI (Kerberos) | Obtain a valid Kerberos ticket with `kinit`; radar uses the ticket automatically. |
+| GSSAPI (Kerberos) | Obtain a Kerberos ticket with `kinit` as the user that runs radar; radar reads the ticket from a file credential cache. With a KCM or KEYRING cache, run `kinit -c FILE:/tmp/krb5cc_$(id -u)` instead. radar supports GSSAPI authentication but not GSSAPI encryption, so a `hostgssenc` line in `pg_hba.conf` does not match radar's connections. |
 
 ### Choosing Permissions
 
