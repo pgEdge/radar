@@ -1,97 +1,251 @@
 # radar
 
-> Agentless, zero-dependency diagnostic data collection tool for PostgreSQL and system metrics.
+radar is an agentless diagnostic data collection tool for PostgreSQL and for
+the system that hosts it.
 
-## What it Does
+radar collects a snapshot of system and PostgreSQL diagnostic data for
+troubleshooting and analysis. radar runs system commands and PostgreSQL
+queries, and streams the output into a timestamped ZIP archive. A PostgreSQL
+connection is optional; without one, radar collects system data only. When a
+command, file, or view is unavailable, radar skips that collector and continues
+the run.
 
-Collects a comprehensive snapshot of system and PostgreSQL metrics for troubleshooting and analysis:
+pgEdge publishes radar as RPM and DEB packages and as pre-built binaries for
+Linux and macOS, so you do not need to build radar yourself. The
+[Installing radar](#installing-radar) section describes each method, starting
+with the simplest.
 
-- Runs system commands and PostgreSQL queries to collect diagnostic information
-- Archives all collected data into a timestamped ZIP file
-- Handles unavailable collectors gracefully (no errors if commands/files are missing)
+## Installing radar
 
-## How it Works
+radar runs on Linux and macOS as a single static binary. You can install the
+pgEdge package or download a pre-built binary.
 
-1. Connects to PostgreSQL (optional - can collect system data only)
-2. Executes collection tasks:
-   - System tasks: shell commands, file reads
-   - PostgreSQL tasks: SQL queries, config file reads
-3. Streams output directly to ZIP archive
-4. Skips unavailable collectors without failing
+### Reviewing the Requirements
 
-## Installation
+The requirements for radar include:
 
-radar supports Linux and macOS.
+- a Linux or macOS host; radar uses standard utilities such as `df` and `ps`
+  when they are present.
+- PostgreSQL 12 or later; some collectors require a later version, as the
+  [data reference](data.md) notes.
 
-Download pre-built binaries from [GitHub Releases](https://github.com/pgEdge/radar/releases).
+### Installing the pgEdge Package
 
-**Platform Notes**: Some system collectors are platform-specific. Linux-only collectors (systemd, SELinux, /proc, /sys filesystems) will be skipped on macOS. macOS uses platform-specific collectors (sysctl, system_profiler, diskutil, launchctl, etc.) instead.
+pgEdge publishes radar as the `pgedge-radar` package in the pgEdge Enterprise
+Postgres repository for Enterprise Linux, Debian, and Ubuntu. The repository
+configuration enables signature checks with the pgEdge signing key. The package
+installs the `radar` binary in `/usr/bin`.
 
-## Quick Start
+Use the following steps to install the package:
+
+1. Configure the pgEdge Enterprise Postgres repository by following the
+   instructions for
+   [Enterprise Linux](https://docs.pgedge.com/enterprise/el/configure-repo/) or
+   for
+   [Debian and Ubuntu](https://docs.pgedge.com/enterprise/debian/configure-repo/).
+
+2. Install the package; on Enterprise Linux, run the following command:
+
+    ```bash
+    sudo dnf install -y pgedge-radar
+    ```
+
+    On Debian and Ubuntu, run the following commands:
+
+    ```bash
+    sudo apt-get update
+    sudo apt-get install -y pgedge-radar
+    ```
+
+3. Confirm the installation by printing the radar version:
+
+    ```bash
+    radar --version
+    ```
+
+### Downloading a Pre-built Binary
+
+Each [GitHub release](https://github.com/pgEdge/radar/releases) includes static
+radar binaries for Linux and macOS on amd64 and arm64. The release also
+includes a `checksums.txt` file with the SHA-256 checksum of each binary.
+
+Use the following steps to install a pre-built binary on Linux:
+
+1. Download the binary for your architecture and the checksum file from the
+   latest release; the following commands download the amd64 binary:
+
+    ```bash
+    curl -fLO https://github.com/pgEdge/radar/releases/latest/download/radar-linux-amd64
+    curl -fLO https://github.com/pgEdge/radar/releases/latest/download/checksums.txt
+    ```
+
+2. Verify the binary against the published checksum; the command prints `OK`
+   after the name of a matching binary:
+
+    ```bash
+    sha256sum --check --ignore-missing checksums.txt
+    ```
+
+3. Make the binary executable and move the binary into a directory on your
+   `PATH`:
+
+    ```bash
+    chmod +x radar-linux-amd64
+    sudo mv radar-linux-amd64 /usr/local/bin/radar
+    ```
+
+On macOS, download `radar-darwin-arm64` or `radar-darwin-amd64` instead. Run
+`shasum -a 256` on the binary, and compare the output with the matching line in
+`checksums.txt`.
+
+### Understanding Platform Differences
+
+Some system collectors are specific to one platform. On macOS, radar skips the
+Linux-only collectors for systemd, SELinux, and the `/proc` and `/sys`
+filesystems. radar uses macOS collectors such as `sysctl`, `system_profiler`,
+`diskutil`, and `launchctl` instead.
+
+## Configuring radar
+
+radar takes its settings from command-line options and from the standard
+PostgreSQL environment variables; radar has no configuration file.
+
+### Setting the Connection Defaults
+
+The `-h`, `-U`, and `-d` options are optional, and radar resolves each value as
+follows:
+
+- `-h` falls back to `PGHOST`, and then to `localhost` over TCP; radar does not
+  default to a Unix-domain socket.
+- `-U` falls back to `PGUSER`, then to the name of the current operating system
+  user, and then to `postgres` when radar cannot determine that user.
+- `-d` falls back to `PGDATABASE`, and then to `postgres`; with
+  `--skip-system`, radar requires a database name from `-d` or `PGDATABASE`.
+
+### Setting Environment Variables
+
+The following table describes the environment variables that radar reads:
+
+| Variable | Description |
+|----------|-------------|
+| `PGHOST` | Specifies the PostgreSQL host. |
+| `PGPORT` | Specifies the PostgreSQL port. |
+| `PGUSER` | Specifies the PostgreSQL user name. |
+| `PGPASSWORD` | Specifies the PostgreSQL password. |
+| `PGPASSFILE` | Names the password file that the driver reads when no password is supplied; the default is `~/.pgpass`. |
+| `PGDATABASE` | Specifies the PostgreSQL database name. |
+| `PGSSLMODE` | Specifies the SSL mode: `prefer`, `disable`, `require`, `verify-ca`, or `verify-full`. radar rejects any other value. |
+| `PGSSLCERT` | Specifies the client SSL certificate file. |
+| `PGSSLKEY` | Specifies the client SSL private key file. |
+| `PGSSLROOTCERT` | Specifies the SSL root (CA) certificate file. |
+
+The pgx driver also applies the other libpq environment variables that radar
+does not set itself, such as `PGAPPNAME` and `PGCONNECT_TIMEOUT`.
+
+### Choosing an Authentication Method
+
+The following table describes how to configure radar for each authentication
+method:
+
+| Method | Configuration |
+|--------|---------------|
+| Password | Supply the user with `-U` and the password with `PGPASSWORD`, or rely on the operating system user defaults. |
+| LDAP | The server performs LDAP authentication, so the client needs no changes; supply the user name and password as for password authentication. |
+| Certificate | Run radar with `--sslmode verify-full --sslcert client.crt --sslkey client.key --sslrootcert ca.crt`. |
+| GSSAPI (Kerberos) | Obtain a valid Kerberos ticket with `kinit`; radar uses the ticket automatically. |
+
+### Choosing Permissions
+
+The privileges of the operating system user and of the PostgreSQL role
+determine how much data radar can collect.
+
+#### Running as Root with a Superuser
+
+For a complete collection, run radar as root with a PostgreSQL superuser
+account; this is the recommended combination. The following command runs a
+collection as root with the `postgres` superuser:
 
 ```bash
-# Collect system and PostgreSQL data (the default)
-./radar -d mydatabase -U databaseuser
-
-# System data only
-./radar --skip-postgres
-
-# PostgreSQL data only
-./radar -d mydatabase -U databaseuser --skip-system
+PGPASSWORD='postgres_password' radar -d mydatabase -U postgres
 ```
 
-Both connection flags are optional:
+This combination gives radar:
 
-- `-U` falls back to `PGUSER`, then to the current OS user
-- `-d` falls back to `PGDATABASE`, then to `postgres` (except with `--skip-system`, when it requires an explicit database name or PGDATABASE)
+- full system-level access to operating system metrics, logs, and configuration
+  files.
+- complete access to the PostgreSQL catalog, including all views, tables, and
+  system information.
+- the most diagnostic data for troubleshooting.
 
-## Permissions & Security
+#### Running as Root with the pg_monitor Role
 
-### Recommended: Root + PostgreSQL Superuser
+Where your policy restricts superuser access in production, grant the
+`pg_monitor` role to a dedicated user instead. The `pg_monitor` role provides
+most of the diagnostic data without superuser privileges.
 
-For complete diagnostic collection, run radar as **root** with a PostgreSQL **superuser** account:
-
-```bash
-# As root, run collection with postgres superuser
-PGPASSWORD='postgres_password' ./radar -d mydatabase -U postgres
-```
-
-This combination provides:
-- Full system-level access to collect OS metrics, logs, and configuration files
-- Complete PostgreSQL catalog access (all views, tables, and system information)
-- Maximum diagnostic data for troubleshooting
-
-### Alternatives
-
-**Root + pg_monitor Role**: For production environments where superuser access is restricted, use the `pg_monitor` role instead. This provides most diagnostic data while using a non-superuser account:
+The following commands create a monitoring user as the `postgres` operating
+system user, and then run a collection as root:
 
 ```bash
-# As postgres user, create a monitoring user with pg_monitor role
+# As the postgres user, create a monitoring user with the pg_monitor role
 psql -c "CREATE USER radaruser WITH PASSWORD 'secure_password';"
 psql -c "GRANT pg_monitor TO radaruser;"
 
-# As root, run collection
-PGPASSWORD='secure_password' ./radar -d mydatabase -U radaruser
+# As root, run a collection
+PGPASSWORD='secure_password' radar -d mydatabase -U radaruser
 ```
 
-Note: a `pg_monitor` role reaches nearly everything. Expect a few replication catalog views and `pg_hba_file_rules` to be missing, and a permission denial on those to be reported per collector; the run still completes and writes an archive. `pg_hba.conf` itself is still collected from the filesystem.
+The `pg_monitor` role can read nearly every source that radar queries. A few
+replication catalog views and `pg_hba_file_rules` remain unreadable, and radar
+reports a permission denial for each affected collector. The run still
+completes and writes an archive, and radar still reads `pg_hba.conf` from the
+data directory.
 
-**Limited Permissions**: radar can run as a non-root user with limited PostgreSQL permissions. Some system collectors will be skipped, and some PostgreSQL catalog queries may fail gracefully.
+#### Running with Limited Permissions
 
-### Data Privacy
+radar can run as a non-root user with limited PostgreSQL permissions. radar
+then reports an error for each system file that it cannot read and each command
+that fails, and some PostgreSQL catalog queries fail; the run continues and
+writes an archive.
 
-radar collects **metadata only** - no user data, query results, or table contents. However, collected archives may contain potentially sensitive configuration information:
+## Using radar
 
-- Database and table names, schemas, and object definitions
-- PostgreSQL configuration settings (but not passwords)
-- System configuration and resource utilization metrics
-- Active connection counts and database statistics
+Each radar invocation runs one collection, writes a single ZIP archive, and
+exits.
 
-The tool does **not** collect: passwords, query result data, table contents, or user-generated data. Review archive contents before sharing externally.
+### Running a Collection
 
-## Usage
+The following commands collect both kinds of data, system data only, and
+PostgreSQL data only:
 
+```bash
+# Collect system and PostgreSQL data (the default)
+radar -d mydatabase -U databaseuser
+
+# Collect system data only
+radar --skip-postgres
+
+# Collect PostgreSQL data only
+radar -d mydatabase -U databaseuser --skip-system
 ```
+
+The `--skip-system` option also skips the PgBouncer collectors, which radar
+treats as system collectors.
+
+radar prints the archive name and its size in kilobytes when the collection
+finishes:
+
+```text
+$ radar -d mydatabase
+Collecting diagnostic data...
+✓ Archive created: radar-hostname-20260115-133700.zip (1234 KB)
+```
+
+### Reviewing the Command-Line Options
+
+The `radar --help` command prints the following usage summary:
+
+```text
 Usage: radar [options]
 
 GLOBAL OPTIONS:
@@ -132,93 +286,41 @@ Options:
     	very verbose output (detailed)
 ```
 
-### Environment Variables
+### Excluding Collectors
 
-- `PGHOST` - PostgreSQL host
-- `PGPORT` - PostgreSQL port
-- `PGUSER` - PostgreSQL username
-- `PGPASSWORD` - PostgreSQL password
-- `PGDATABASE` - PostgreSQL database name
-- `PGSSLMODE` - SSL mode
-- `PGSSLCERT` - client SSL certificate file
-- `PGSSLKEY` - client SSL private key file
-- `PGSSLROOTCERT` - SSL root (CA) certificate file
+The `-exclude` option skips the collectors that you name, and the `-include`
+option enables the collectors that are disabled by default; `-include` takes
+precedence over `-exclude`.
 
-### Authentication Methods
+Run radar with `-vv` to list each collector by name; for a per-database
+collector, the name after the database prefix is the name that `-exclude`
+accepts:
 
-- **Password** — use `-U` and `PGPASSWORD`, or rely on OS user defaults
-- **LDAP** — server-side only; no client changes needed. Supply credentials as normal
-- **Certificate** — use `--sslmode verify-full --sslcert client.crt --sslkey client.key --sslrootcert ca.crt`
-- **GSSAPI/Kerberos** — ensure a valid Kerberos ticket is present (`kinit`); radar will use it automatically
-
-### Sample Output
-
-```
-$ ./radar -d mydatabase
-✓ Archive created: radar-hostname-20260115-133700.zip (1.2 MB)
+```text
+✓ stat_ssl
+✓ postgres/tables
 ```
 
-## Data Collected
+The following command skips the `bloat` and `stat_ssl` collectors:
 
-For a complete reference of all collected data, see [data.md](data.md).
-
-**System Information**
-
-- **Block devices & storage**: `blockdev`, `df`, `diskstats`, `fstab`, `io-queue-depth`, `io-schedulers`, `iostat`, `lsblk`, `ls`, `mount`, `mounts`, `nfsiostat`, `swaps`
-- **CPU & performance**: `cpuinfo`, `clocksource`, `energy_perf_bias`, `free`, `intel_pstate`, `loadavg`, `lscpu`, `mpstat`, `numactl`, `numastat`, `sar`, `scaling_available_governors`, `scaling_driver`, `scaling_governor`, `top`, `uptime`, `vmstat`
-- **Memory & kernel**: `dmesg`, `ipcs`, `meminfo`, `pressure/cpu`, `pressure/io`, `pressure/memory`, `sysctl`, `transparent_hugepage`
-- **Operating system**: `apt`, `dnf`, `dpkg`, `hostname`, `hosts`, `limits.conf`, `locale`, `locale.conf`, `localectl`, `lsmod`, `lspci`, `machine-id`, `os-release`, `ps`, `rpm`, `system-release`, `systemctl`, `systemd-detect-virt`, `timedatectl`, `tuned-adm`, `uname`, `yum`
-- **Network**: `ifconfig`, `ip`, `netstat`, `resolv.conf`, `ss`
-- **Security**: `fips-mode-setup`, `openssl`, `sestatus`, `update-crypto-policies`
-- **Cgroup v2**: `cpu.max`, `cpu.weight`, `cpuset.cpus.effective`, `io.max`, `memory.current`, `memory.max`, `memory.stat`, `memory.swap.max`, `pids.current`, `pids.max`
-- **Cgroup v1**: `cpu.cfs_period_us`, `cpu.cfs_quota_us`, `cpu.shares`, `cpuset.cpus`, `memory.limit_in_bytes`, `memory.stat`, `memory.usage_in_bytes`
-- **Cloud/hardware identity**: `bios_vendor`, `chassis_asset_tag`, `product_name`, `sys_vendor` (DMI)
-- **Container detection** (auto-detected): cgroup membership, mount info, Docker detection, Kubernetes namespace, container environment variables
-
-**PostgreSQL Instance**
-
-- **Configuration & files**: `pg_db_role_setting`, `pg_file_settings`, `pg_hba.conf`, `pg_hba_file_rules`, `pg_ident.conf`, `pg_settings`, `pg_tablespace`, `postgresql.auto.conf`, `postgresql.conf`, `recovery.conf`, `recovery.done`
-- **Activity & monitoring**: `pg_locks`, `pg_postmaster_start_time()`, `pg_prepared_xacts`, `pg_shmem_allocations`, `pg_stat_activity`
-- **Statistics views**: `pg_stat_archiver`, `pg_stat_bgwriter`, `pg_stat_checkpointer` (PG17+), `pg_stat_database_conflicts`, `pg_stat_io` (PG16+), `pg_stat_slru`, `pg_stat_ssl`, `pg_stat_statements` (if installed), `pg_stat_wal` (PG14+), `pg_stat_wal_receiver`
-- **Replication & WAL**: `pg_current_wal_lsn()`, `pg_replication_origin_status`, `pg_replication_slots`, `pg_stat_replication`, `pg_stat_replication_slots` (PG14+, spill counters), `pg_stat_subscription_stats` (PG15+, apply/sync error and conflict counters), `pg_subscription`
-- **Progress tracking**: `pg_stat_progress_analyze`, `pg_stat_progress_basebackup`, `pg_stat_progress_cluster`, `pg_stat_progress_copy`, `pg_stat_progress_create_index`, `pg_stat_progress_vacuum`
-- **Catalog**: `pg_available_extension_versions`, `pg_database` (incl. `datfrozenxid`/`datminmxid` wraparound headroom and `datconnlimit`), `pg_database_size()`, `pg_roles`, `pg_tablespace_size()`, `version()`
-- **Control file**: `pg_control_checkpoint()`, `pg_control_init()`, `pg_control_recovery()`, `pg_control_system()` (the `pg_controldata` content, read as SQL)
-- **Log directory**: `pg_ls_logdir()`, with per-file name, size and modification time. Names only, never log contents
-
-**Per-Database**
-
-- **Schema objects**: `pg_class` + `pg_stat_all_tables` (tables incl. dead-tup counters, vacuum/analyze timestamps, per-table `relfrozenxid`/`relminmxid` freeze ages, `reloptions`, `reltoastrelid`, `relpersistence`), plus a dedicated freeze-age listing ranked by age rather than size so a small table near the wraparound threshold is not missed, `pg_index` + `pg_stat_all_indexes` (indexes incl. validity, scan counters, size), `pg_namespace`, `pg_operator`, `pg_sequences`, `pg_type`
-- **Functions & procedures**: `pg_proc`
-- **Triggers & partitioning**: `pg_inherits`, `pg_partitioned_table`, `pg_trigger`
-- **Logical replication**: `pg_publication`, `pg_publication_tables`, `pg_subscription_rel`
-- **Extensions**: `pg_extension`, `pg_language`, `pg_statistic_ext`, `pgstattuple` (if installed — authoritative bloat estimate via `pgstattuple_approx()`)
-- **Statistics**: `pg_stat_database` (conflicts, deadlocks, temp files, stats reset)
-- **Bloat estimate**: heuristic from `pg_stats` (always emitted)
-
-**[pg_statviz](https://github.com/vyruss/pg_statviz) Extension** (if present)
-
-- **Time-series statistics**: `pgstatviz.blocking`, `pgstatviz.buf`, `pgstatviz.conf`, `pgstatviz.conn`, `pgstatviz.db`, `pgstatviz.io`, `pgstatviz.lock`, `pgstatviz.repl`, `pgstatviz.slru`, `pgstatviz.snapshots`, `pgstatviz.wait`, `pgstatviz.wal`
-
-**[PgBouncer](https://www.pgbouncer.org/)** (if installed)
-
-- **Pooler configuration**: the `[pgbouncer]` section of `pgbouncer.ini`, plus a listing of the configuration directory. Values outside `[pgbouncer]` are removed, because `[databases]` connection strings routinely contain `password=`, and comments are dropped entirely. `userlist.txt` is recorded as a directory entry only: it holds credentials and its contents are never collected. Use `--pgbouncer-conf` for a configuration directory outside the usual locations
-
-**[Spock](https://github.com/pgEdge/spock) Extension** (if present)
-
-- **Replication state**: `spock.channel_summary_stats`, `spock.lag_tracker`, `spock.local_node`, `spock.local_sync_status`, `spock.node`, `spock.pii`, `spock.progress`, `spock.replication_set`, `spock.replication_set_table`, `spock.subscription`, `spock.tables`
-- **Conflicts**: `spock.exception_log` and `spock.resolutions`, carrying counters, timestamps, conflict types and the apply error message. The jsonb and text images of the conflicting rows are excluded, and `spock.node_interface` is not collected at all because `if_dsn` holds the node password. `error_message` is retained: Spock stores no `DETAIL`, so a constraint violation's offending key is not included, though an error whose primary message embeds a value would carry it
-
-## Output Structure
-
-All data is collected in a single ZIP file named `radar-{hostname}-{timestamp}.zip`:
-
+```bash
+radar -d mydatabase -U databaseuser -exclude bloat,stat_ssl
 ```
+
+### Reading the Archive
+
+radar writes all data to a single ZIP file named
+`radar-{hostname}-{timestamp}.zip` in the current directory. Only the owner can
+read the archive, and radar refuses to overwrite an existing file. The
+following tree shows the layout of the archive:
+
+```text
 radar-hostname-20260115-133700.zip
+├── radar.out            (radar version and commit)
 ├── system/              (Linux system data)
 │   ├── lsblk.out
 │   ├── mount.out
-│   ├── df.out
+│   ├── diskspace.out
 │   ├── proc/
 │   │   ├── meminfo.out
 │   │   └── cpuinfo.out
@@ -251,31 +353,151 @@ radar-hostname-20260115-133700.zip
     └── files.tsv
 ```
 
-**File Formats**:
-- **TSV files (.tsv)**: Tab-separated values with headers (PostgreSQL query results)
-- **Command output (.out)**: Raw command output (stdout + stderr combined)
-- **Config files (.conf)**: PostgreSQL configuration files (raw contents)
+The following table describes the file formats in the archive:
 
-## Requirements
+| Extension | Format |
+|-----------|--------|
+| `.tsv` | Tab-separated values with a header row; query results and directory listings use this format. |
+| `.out` | Command output, with `stdout` and `stderr` combined, or a copy of a system file; `radar.out` records the radar version and commit. |
+| `.conf` | The raw contents of a configuration file, such as `postgresql.conf`. |
+| `.ini` | The `pgbouncer.ini` file, with the values outside the `[pgbouncer]` section redacted. |
+| `.plist` | A macOS property list, such as the system version. |
 
-- **System**: Linux or macOS with standard utilities (lsblk, mount, df, ps, etc.)
-- **PostgreSQL**: Version 12+ (some features require 13+, 14+, or 16+)
+### Understanding Performance
 
-## Performance
+radar streams data directly into the ZIP file without buffering the data in
+memory. radar runs the collectors sequentially with a small memory footprint,
+and opens one connection per database for all of the queries in that database.
+A complete collection typically takes seconds.
 
-- Data streams directly to ZIP file without buffering in memory
-- Sequential execution with minimal memory footprint
-- One connection per database, reused across all of that database's queries
-- Complete collection typically takes seconds
+## Reviewing the Collected Data
+
+radar collects metadata and statistics from the operating system, the
+PostgreSQL instance, each database, and optional extensions and tools. The
+[data reference](data.md) describes every file in the archive.
+
+### Collecting System Information
+
+The following table describes the system data that radar collects:
+
+| Area | Sources |
+|------|---------|
+| Block devices and storage | `blockdev`, `df`, `diskstats`, `fstab`, `io-queue-depth`, `io-schedulers`, `iostat`, `lsblk`, `ls`, `mount`, `mounts`, `nfsiostat`, `swaps` |
+| CPU and performance | `cpuinfo`, `clocksource`, `energy_perf_bias`, `free`, `intel_pstate`, `loadavg`, `lscpu`, `mpstat`, `numactl`, `numastat`, `sar`, `scaling_available_governors`, `scaling_driver`, `scaling_governor`, `top`, `uptime`, `vmstat` |
+| Memory and kernel | `dmesg`, `ipcs`, `meminfo`, `pressure/cpu`, `pressure/io`, `pressure/memory`, `sysctl`, `transparent_hugepage` |
+| Operating system | `apt`, `dnf`, `dpkg`, `hostname`, `hosts`, `limits.conf`, `locale`, `locale.conf`, `localectl`, `lsmod`, `lspci`, `machine-id`, `os-release`, `ps`, `rpm`, `system-release`, `systemctl`, `systemd-detect-virt`, `timedatectl`, `tuned-adm`, `uname`, `yum` |
+| Network | `ifconfig`, `ip`, `netstat`, `resolv.conf`, `ss` |
+| Security | `fips-mode-setup`, `openssl`, `sestatus`, `update-crypto-policies` |
+| Cgroup v2 | `cpu.max`, `cpu.weight`, `cpuset.cpus.effective`, `io.max`, `memory.current`, `memory.max`, `memory.stat`, `memory.swap.max`, `pids.current`, `pids.max` |
+| Cgroup v1 | `cpu.cfs_period_us`, `cpu.cfs_quota_us`, `cpu.shares`, `cpuset.cpus`, `memory.limit_in_bytes`, `memory.stat`, `memory.usage_in_bytes` |
+| Cloud and hardware identity | The DMI fields `bios_vendor`, `chassis_asset_tag`, `product_name`, and `sys_vendor`. |
+| Container detection | radar detects a container when `/.dockerenv` exists, when `/proc/1/cgroup` names `docker`, `kubepods`, `containerd`, or `lxc`, or when `KUBERNETES_SERVICE_HOST` is set; inside a container, radar also collects the container environment variables and the Kubernetes namespace. |
+
+### Collecting PostgreSQL Instance Data
+
+The following table describes the instance-wide PostgreSQL data that radar
+collects:
+
+| Area | Sources |
+|------|---------|
+| Configuration and files | `pg_db_role_setting`, `pg_file_settings`, `pg_hba.conf`, `pg_hba_file_rules`, `pg_ident.conf`, `pg_settings`, `pg_tablespace`, `postgresql.auto.conf`, `postgresql.conf`, `recovery.conf`, `recovery.done` |
+| Activity and monitoring | `pg_locks`, `pg_postmaster_start_time()`, `pg_prepared_xacts`, `pg_shmem_allocations`, `pg_stat_activity` |
+| Statistics views | `pg_stat_archiver`, `pg_stat_bgwriter`, `pg_stat_checkpointer` (PG17+), `pg_stat_database_conflicts`, `pg_stat_io` (PG16+), `pg_stat_slru`, `pg_stat_ssl`, `pg_stat_statements` (if installed), `pg_stat_wal` (PG14+), `pg_stat_wal_receiver` |
+| Replication and WAL | `pg_current_wal_lsn()`, `pg_replication_origin_status`, `pg_replication_slots`, `pg_stat_replication`, `pg_stat_replication_slots` (PG14+, spill counters), `pg_stat_subscription_stats` (PG15+ apply and sync error counters, PG18+ conflict counters), `pg_subscription` |
+| Progress tracking | `pg_stat_progress_analyze`, `pg_stat_progress_basebackup`, `pg_stat_progress_cluster`, `pg_stat_progress_copy`, `pg_stat_progress_create_index`, `pg_stat_progress_vacuum` |
+| Catalog | `pg_available_extension_versions`, `pg_database` (including the `datfrozenxid` and `datminmxid` wraparound headroom and `datconnlimit`), `pg_database_size()`, `pg_roles`, `pg_tablespace_size()`, `version()` |
+| Control file | `pg_control_checkpoint()`, `pg_control_init()`, `pg_control_recovery()`, and `pg_control_system()` return the `pg_controldata` content as SQL. |
+| Log directory | `pg_ls_logdir()` lists the name, size, and modification time of each file; radar never reads log contents. |
+
+### Collecting Per-Database Data
+
+The following table describes the data that radar collects from each database:
+
+| Area | Sources |
+|------|---------|
+| Tables | `pg_class` and `pg_stat_all_tables`, including dead-tuple counters, vacuum and analyze timestamps, per-table `relfrozenxid` and `relminmxid` freeze ages, `reloptions`, `reltoastrelid`, and `relpersistence`. A separate freeze-age listing ranks tables by age rather than size, so the listing includes a small table near the wraparound threshold. |
+| Indexes | `pg_index` and `pg_stat_all_indexes`, including validity, scan counters, and size. |
+| Other schema objects | `pg_namespace`, `pg_operator`, `pg_sequences`, `pg_type` |
+| Functions and procedures | `pg_proc` |
+| Triggers and partitioning | `pg_inherits`, `pg_partitioned_table`, `pg_trigger` |
+| Logical replication | `pg_publication`, `pg_publication_tables`, `pg_subscription_rel` |
+| Extensions | `pg_extension`, `pg_language`, `pg_statistic_ext`, and `pgstattuple`; when `pgstattuple` is installed and `-include pgstattuple` enables the collector, `pgstattuple_approx()` measures bloat, with exact dead-tuple figures. |
+| Statistics | `pg_stat_database`, including conflicts, deadlocks, temporary files, and the statistics reset time. |
+| Bloat estimate | radar always collects a heuristic bloat estimate from `pg_stats`. |
+
+### Collecting pg_statviz Data
+
+When a database has the [pg_statviz](https://github.com/vyruss/pg_statviz)
+extension installed, radar collects its time-series statistics from
+`pgstatviz.blocking`, `pgstatviz.buf`, `pgstatviz.conf`, `pgstatviz.conn`,
+`pgstatviz.db`, `pgstatviz.io`, `pgstatviz.lock`, `pgstatviz.repl`,
+`pgstatviz.slru`, `pgstatviz.snapshots`, `pgstatviz.wait`, and `pgstatviz.wal`.
+
+### Collecting PgBouncer Configuration
+
+When [PgBouncer](https://www.pgbouncer.org/) is installed, radar collects the
+`[pgbouncer]` section of `pgbouncer.ini` and a listing of the configuration
+directory. radar replaces the values outside the `[pgbouncer]` section with
+`<redacted by radar>`, because `[databases]` connection strings routinely
+contain `password=`, and drops all comments. radar records `userlist.txt` as a
+directory entry only; the file holds credentials, and radar never collects its
+contents. radar reads the first of `/etc/pgbouncer` and
+`/usr/local/etc/pgbouncer` that exists; use `--pgbouncer-conf` to name another
+configuration directory.
+
+### Collecting Spock Replication State
+
+When a database has the [Spock](https://github.com/pgEdge/spock) extension
+installed, radar collects the replication state from
+`spock.channel_summary_stats`, `spock.lag_tracker`, `spock.local_node`,
+`spock.local_sync_status`, `spock.node`, `spock.pii`, `spock.progress`,
+`spock.replication_set`, `spock.replication_set_table`, `spock.subscription`,
+and `spock.tables`.
+
+radar also collects the counters, timestamps, conflict types, and apply error
+messages from `spock.exception_log` and `spock.resolutions`. radar excludes the
+jsonb and text images of the conflicting rows. radar does not collect
+`spock.node_interface` at all, because its `if_dsn` column holds the node
+password. radar keeps `error_message`; Spock stores no `DETAIL`, so the
+offending key of a constraint violation is absent. An error whose primary
+message embeds a value still includes that value.
+
+### Protecting Sensitive Data
+
+radar collects metadata only, and never collects user data, query results, or
+table contents. However, a collected archive may contain sensitive
+configuration information, including:
+
+- database and table names, schemas, and object definitions.
+- PostgreSQL configuration settings, without passwords.
+- system configuration and resource utilization metrics.
+- active connection counts and database statistics.
+
+radar does not collect passwords, query result data, table contents, or
+user-generated data. Review the contents of an archive before you share the
+archive outside your organization.
+
+## Support & Resources
+
+pgEdge provides documentation, an issue tracker, and a security policy for
+radar. For more information, visit [docs.pgedge.com](https://docs.pgedge.com).
+
+To report an issue with the software, visit
+[GitHub Issues](https://github.com/pgEdge/radar/issues). To report a security
+vulnerability, follow the
+[security policy](https://github.com/pgEdge/radar/security/policy).
 
 ## Author
 
-Created by Jimmy Angelakos.
+Jimmy Angelakos created radar.
 
-## Support
+## Next Steps
 
-- **Issues**: Report bugs and feature requests on [GitHub Issues](https://github.com/pgEdge/radar/issues)
+The following documents provide more information about radar:
 
-## License
-
-See [LICENCE.md](LICENCE.md) for details.
+- The [Data Reference](data.md) document describes every file that radar writes
+  to the archive.
+- The [Changelog](changelog.md) document lists the changes in each radar
+  release.
+- The [License](LICENCE.md) document provides the PostgreSQL License, under
+  which pgEdge distributes radar.
