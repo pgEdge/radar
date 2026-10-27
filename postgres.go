@@ -20,7 +20,14 @@ import (
 	"path/filepath"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/otan/gopgkrb5"
 )
+
+// pgx answers a server's GSSAPI request only through a registered provider.
+// gopgkrb5 is pure Go, so the static binary keeps Kerberos support.
+func init() {
+	pgconn.RegisterGSSProvider(func() (pgconn.GSS, error) { return gopgkrb5.NewGSS() })
+}
 
 // isPGUnavailableError reports whether err indicates that the queried object
 // is not installed/available (missing extension, table, function, or schema).

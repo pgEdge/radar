@@ -468,10 +468,12 @@ jobs:
                   krb5kdc
 
                   sudo -u postgres psql -c "ALTER SYSTEM SET krb_server_keyfile = '$PGDATA/server.keytab';"
+                  sudo -u postgres psql -c "ALTER SYSTEM SET log_connections = 'on';"
 
                   cat > "$PGDATA/pg_hba.conf" <<HBA
                   local   all             all                                     trust
-                  hostgssenc testdb       testuser        127.0.0.1/32            gss include_realm=0
+                  host    all             testuser        127.0.0.1/32            gss include_realm=0
+                  host    all             testuser        ::1/128                 gss include_realm=0
                   host    all             all             127.0.0.1/32            trust
                   host    all             all             ::1/128                 trust
                   HBA
@@ -496,6 +498,10 @@ jobs:
                   apt-get update && apt-get install -y unzip
                   if ! unzip -l "$ZIPFILE" | grep -q "postgresql/version.tsv"; then
                       echo "ERROR: Missing PostgreSQL data — GSSAPI auth failed"
+                      exit 1
+                  fi
+                  if ! grep -qE 'connection authenticated: identity="testuser(@[^"]*)?" method=gss' /tmp/postgres.log; then
+                      echo "ERROR: the server log records no GSSAPI authentication for testuser"
                       exit 1
                   fi
                   echo "✓ GSSAPI/Kerberos auth test PASSED"
