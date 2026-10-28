@@ -29,8 +29,10 @@ The radar documentation consists of the following pages:
       Documents password, LDAP, certificate, and GSSAPI authentication.
     - [Choosing Permissions](docs/configuring/permissions.md) - Compares
       superuser, `pg_monitor`, and limited-permission collections.
-- [Using radar](docs/using/index.md) - Describes running a collection, which
-  collects system data, PostgreSQL data, or both, and reading the results.
+- [Using radar](docs/using/index.md) - Describes running a collection and
+  reading the results.
+    - [Running a Collection](docs/using/index.md#running-a-collection) -
+      Documents collecting system data, PostgreSQL data, or both.
     - [Reviewing the Command-Line Options](docs/using/index.md#reviewing-the-command-line-options) -
       Lists every radar option.
     - [Excluding Collectors](docs/using/index.md#excluding-collectors) - Documents

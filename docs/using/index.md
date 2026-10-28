@@ -1,7 +1,9 @@
-# Running a Collection
+# Using radar
 
 Each radar invocation runs one collection, writes a single ZIP archive, and
 exits.
+
+## Running a Collection
 
 The following commands collect both kinds of data, system data only, and
 PostgreSQL data only:
