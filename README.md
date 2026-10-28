@@ -10,11 +10,24 @@ the system that hosts it.
 The radar documentation consists of the following pages:
 
 - [Introduction](docs/index.md)
-    - [Installing radar](docs/index.md#installing-radar)
-    - [Configuring radar](docs/index.md#configuring-radar)
-    - [Using radar](docs/index.md#using-radar)
-    - [Reviewing the Collected Data](docs/index.md#reviewing-the-collected-data)
-- [Data Reference](docs/data.md)
+- [Installing radar](docs/installing/index.md)
+    - [Reviewing the Requirements](docs/installing/requirements.md)
+    - [Installing the pgEdge Package](docs/installing/pgedge_package.md)
+    - [Downloading a Pre-built Binary](docs/installing/prebuilt_binary.md)
+    - [Understanding Platform Differences](docs/installing/platform_differences.md)
+- [Configuring radar](docs/configuring/index.md)
+    - [Setting the Connection Defaults](docs/configuring/connection_defaults.md)
+    - [Setting Environment Variables](docs/configuring/environment_variables.md)
+    - [Choosing an Authentication Method](docs/configuring/authentication.md)
+    - [Choosing Permissions](docs/configuring/permissions.md)
+- [Using radar](docs/using/index.md)
+    - [Running a Collection](docs/using/running_a_collection.md)
+    - [Reviewing the Command-Line Options](docs/using/command_line_options.md)
+    - [Excluding Collectors](docs/using/excluding_collectors.md)
+    - [Reading the Archive](docs/using/reading_the_archive.md)
+    - [Understanding Performance](docs/using/performance.md)
+- [Collector Reference](docs/collector_reference/index.md)
+- [Support & Resources](docs/support.md)
 - [Changelog](docs/changelog.md)
 - [License](docs/LICENCE.md)
 
@@ -42,7 +55,7 @@ The requirements for radar include:
 - a Linux or macOS host; radar uses standard utilities such as `df` and `ps`
   when they are present.
 - PostgreSQL 12 or later; some collectors require a later version, as the
-  [data reference](docs/data.md) notes.
+  [data reference](docs/collector_reference/index.md) notes.
 - Git and Go 1.25.12 or later for a build from source; the `go` directive in
   [go.mod](go.mod) sets this minimum.
 
@@ -440,7 +453,7 @@ A complete collection typically takes seconds.
 
 radar collects metadata and statistics from the operating system, the
 PostgreSQL instance, each database, and optional extensions and tools. The
-[data reference](docs/data.md) describes every file in the archive.
+[data reference](docs/collector_reference/index.md) describes every file in the archive.
 
 ### Collecting System Information
 

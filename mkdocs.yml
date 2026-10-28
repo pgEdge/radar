@@ -24,6 +24,7 @@ theme:
     - navigation.tracking
     - navigation.prune
     - navigation.top
+    - navigation.indexes
     - toc.follow
 
   palette:
@@ -51,6 +52,35 @@ repo_url: https://github.com/pgEdge/radar
 
 nav:
   - Introduction: index.md
-  - Data Reference: data.md
+  - Installing radar:
+      - installing/index.md
+      - Reviewing the Requirements: installing/requirements.md
+      - Installing the pgEdge Package: installing/pgedge_package.md
+      - Downloading a Pre-built Binary: installing/prebuilt_binary.md
+      - Understanding Platform Differences: installing/platform_differences.md
+  - Configuring radar:
+      - configuring/index.md
+      - Setting the Connection Defaults: configuring/connection_defaults.md
+      - Setting Environment Variables: configuring/environment_variables.md
+      - Choosing an Authentication Method: configuring/authentication.md
+      - Choosing Permissions: configuring/permissions.md
+  - Using radar:
+      - using/index.md
+      - Running a Collection: using/running_a_collection.md
+      - Reviewing the Command-Line Options: using/command_line_options.md
+      - Excluding Collectors: using/excluding_collectors.md
+      - Reading the Archive: using/reading_the_archive.md
+      - Understanding Performance: using/performance.md
+  - Collector Reference:
+      - collector_reference/index.md
+      - Collecting Cross-Platform System Data: collector_reference/cross_platform_system.md
+      - Collecting Linux System Data: collector_reference/linux_system.md
+      - Collecting macOS System Data: collector_reference/macos_system.md
+      - Collecting PostgreSQL Instance Data: collector_reference/postgresql_instance.md
+      - Collecting Per-Database Data: collector_reference/per_database.md
+      - Collecting pg_statviz Data: collector_reference/pg_statviz.md
+      - Collecting Spock Data: collector_reference/spock.md
+      - Collecting PgBouncer Configuration: collector_reference/pgbouncer.md
+  - Support & Resources: support.md
   - Changelog: changelog.md
   - License: LICENCE.md
