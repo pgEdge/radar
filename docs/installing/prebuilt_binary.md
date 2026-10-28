@@ -1,7 +1,7 @@
 # Downloading a Pre-built Binary
 
 Each [GitHub release](https://github.com/pgEdge/radar/releases) includes static
-radar binaries for Linux and macOS on amd64 and arm64. The release also
+radar binaries for Linux on amd64 and arm64. The release also
 includes a `checksums.txt` file with the SHA-256 checksum of each binary.
 
 Use the following steps to install a pre-built binary on Linux:
@@ -29,6 +29,5 @@ Use the following steps to install a pre-built binary on Linux:
     sudo mv radar-linux-amd64 /usr/local/bin/radar
     ```
 
-On macOS, download `radar-darwin-arm64` or `radar-darwin-amd64` instead. Run
-`shasum -a 256` on the binary, and compare the output with the matching line in
-`checksums.txt`.
+Releases do not include macOS binaries; on macOS, build radar from source, as
+described in [Building from Source](building_from_source.md).
