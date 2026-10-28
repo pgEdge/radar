@@ -31,9 +31,9 @@ The radar documentation consists of the following pages:
       superuser, `pg_monitor`, and limited-permission collections.
 - [Using radar](docs/using/index.md) - Describes running a collection, which
   collects system data, PostgreSQL data, or both, and reading the results.
-    - [Reviewing the Command-Line Options](docs/using/command_line_options.md) -
+    - [Reviewing the Command-Line Options](docs/using/index.md#reviewing-the-command-line-options) -
       Lists every radar option.
-    - [Excluding Collectors](docs/using/excluding_collectors.md) - Documents
+    - [Excluding Collectors](docs/using/index.md#excluding-collectors) - Documents
       skipping and enabling individual collectors.
     - [Reading the Archive](docs/using/reading_the_archive.md) - Describes the
       archive layout and file formats.
