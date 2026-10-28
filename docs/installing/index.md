@@ -13,3 +13,10 @@ The requirements for radar include:
   [data reference](../collector_reference/index.md) notes.
 - Git and Go 1.25.12 or later for a build from source; the `go` directive in
   [go.mod](https://github.com/pgEdge/radar/blob/main/go.mod) sets this minimum.
+
+## Understanding Platform Differences
+
+Some system collectors are specific to one platform. On macOS, radar skips the
+Linux-only collectors for systemd, SELinux, and the `/proc` and `/sys`
+filesystems. radar uses macOS collectors such as `sysctl`, `system_profiler`,
+`diskutil`, and `launchctl` instead.

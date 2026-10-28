@@ -11,14 +11,14 @@ The radar documentation consists of the following pages:
   radar.
     - [Reviewing the Requirements](docs/installing/index.md#reviewing-the-requirements) -
       Lists the platform and PostgreSQL requirements.
+    - [Understanding Platform Differences](docs/installing/index.md#understanding-platform-differences) -
+      Describes the collectors that run on Linux and on macOS.
     - [Installing the pgEdge Package](docs/installing/pgedge_package.md) -
       Installs radar from the pgEdge Enterprise Postgres repository.
     - [Downloading a Pre-built Binary](docs/installing/prebuilt_binary.md) -
       Installs a release binary and verifies its checksum.
     - [Building from Source](docs/installing/building_from_source.md) - Builds
       a static radar binary with Go.
-    - [Understanding Platform Differences](docs/installing/platform_differences.md) -
-      Describes the collectors that run on Linux and on macOS.
 - [Configuring radar](docs/configuring/index.md) - Describes radar's
   command-line options and environment variables.
     - [Setting the Connection Defaults](docs/configuring/connection_defaults.md) -
