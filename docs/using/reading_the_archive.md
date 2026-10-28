@@ -53,3 +53,10 @@ The following table describes the file formats in the archive:
 | `.conf` | The raw contents of a configuration file, such as `postgresql.conf`. |
 | `.ini` | The `pgbouncer.ini` file, with the values outside the `[pgbouncer]` section redacted. |
 | `.plist` | A macOS property list, such as the system version. |
+
+!!! hint
+
+    radar streams data directly into the ZIP file without buffering the data in
+    memory. radar runs the collectors sequentially with a small memory
+    footprint, and opens one connection per database for all of the queries in
+    that database. A complete collection typically takes seconds.

@@ -37,8 +37,6 @@ The radar documentation consists of the following pages:
       skipping and enabling individual collectors.
     - [Reading the Archive](docs/using/reading_the_archive.md) - Describes the
       archive layout and file formats.
-    - [Understanding Performance](docs/using/performance.md) - Describes
-      radar's memory and connection use.
 - [Collector Reference](docs/collector_reference/index.md) - Describes the
   collected data and links to a reference page for each collector.
     - [Collecting Cross-Platform System Data](docs/collector_reference/cross_platform_system.md) -

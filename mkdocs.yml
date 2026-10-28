@@ -68,7 +68,6 @@ nav:
   - Using radar:
       - using/index.md
       - Reading the Archive: using/reading_the_archive.md
-      - Understanding Performance: using/performance.md
   - Collector Reference:
       - collector_reference/index.md
       - Collecting Cross-Platform System Data: collector_reference/cross_platform_system.md
