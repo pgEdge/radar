@@ -67,7 +67,6 @@ nav:
       - Choosing Permissions: configuring/permissions.md
   - Using radar:
       - using/index.md
-      - Running a Collection: using/running_a_collection.md
       - Reviewing the Command-Line Options: using/command_line_options.md
       - Excluding Collectors: using/excluding_collectors.md
       - Reading the Archive: using/reading_the_archive.md
