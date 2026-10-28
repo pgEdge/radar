@@ -373,7 +373,7 @@ radar/
 ├── test-radar.sh             # Integration test script
 ├── run-ci-local.sh           # Local CI/CD script
 ├── Dockerfile                # Docker container for testing
-├── docs/data.md              # Reference for the data collected
+├── docs/collector_reference/ # Reference for the data collected
 └── README.md                 # User documentation
 ```
 
