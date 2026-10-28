@@ -21,9 +21,9 @@ The radar documentation consists of the following pages:
       a static radar binary with Go.
 - [Configuring radar](docs/configuring/index.md) - Describes radar's
   command-line options and environment variables.
-    - [Setting the Connection Defaults](docs/configuring/connection_defaults.md) -
+    - [Setting the Connection Defaults](docs/configuring/index.md#setting-the-connection-defaults) -
       Documents how radar resolves the host, user, and database.
-    - [Setting Environment Variables](docs/configuring/environment_variables.md) -
+    - [Setting Environment Variables](docs/configuring/index.md#setting-environment-variables) -
       Lists the PostgreSQL environment variables that radar reads.
     - [Choosing an Authentication Method](docs/configuring/authentication.md) -
       Documents password, LDAP, certificate, and GSSAPI authentication.

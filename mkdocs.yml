@@ -59,8 +59,6 @@ nav:
       - Building from Source: installing/building_from_source.md
   - Configuring radar:
       - configuring/index.md
-      - Setting the Connection Defaults: configuring/connection_defaults.md
-      - Setting Environment Variables: configuring/environment_variables.md
       - Choosing an Authentication Method: configuring/authentication.md
       - Choosing Permissions: configuring/permissions.md
   - Using radar:
