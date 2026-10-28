@@ -9,8 +9,8 @@ The radar documentation consists of the following pages:
 - [Introduction](docs/index.md) - Introduces radar and the data it collects.
 - [Installing radar](docs/installing/index.md) - Describes the ways to install
   radar.
-    - [Reviewing the Requirements](docs/installing/requirements.md) - Lists the
-      platform and PostgreSQL requirements.
+    - [Reviewing the Requirements](docs/installing/index.md#reviewing-the-requirements) -
+      Lists the platform and PostgreSQL requirements.
     - [Installing the pgEdge Package](docs/installing/pgedge_package.md) -
       Installs radar from the pgEdge Enterprise Postgres repository.
     - [Downloading a Pre-built Binary](docs/installing/prebuilt_binary.md) -

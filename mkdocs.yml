@@ -54,7 +54,6 @@ nav:
   - Introduction: index.md
   - Installing radar:
       - installing/index.md
-      - Reviewing the Requirements: installing/requirements.md
       - Installing the pgEdge Package: installing/pgedge_package.md
       - Downloading a Pre-built Binary: installing/prebuilt_binary.md
       - Building from Source: installing/building_from_source.md
