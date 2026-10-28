@@ -223,19 +223,6 @@ On macOS, Homebrew can install PostgreSQL if the host needs it:
 brew install postgresql@18
 ```
 
-## Documentation
-
-The [radar documentation](https://docs.pgedge.com/radar/) on the pgEdge
-documentation site covers installation, usage, and the data reference; the
-`docs` directory holds the source of that documentation. To preview the
-documentation locally, install MkDocs Material and start the MkDocs development
-server from the repository root:
-
-```bash
-pip install mkdocs-material
-mkdocs serve
-```
-
 ## Support & Resources
 
 pgEdge provides documentation, an issue tracker, and a security policy for
