@@ -15,13 +15,13 @@ Use the following steps to install the package:
    for
    [Debian and Ubuntu](https://docs.pgedge.com/enterprise/debian/configure-repo/).
 
-2. Install the package; on Enterprise Linux, run the following command:
+2. Install the package; on Enterprise Linux, use the following command:
 
     ```bash
     sudo dnf install -y pgedge-radar
     ```
 
-    On Debian and Ubuntu, run the following commands:
+    On Debian and Ubuntu, use the following commands:
 
     ```bash
     sudo apt-get update
