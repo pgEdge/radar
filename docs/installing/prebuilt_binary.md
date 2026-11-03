@@ -1,8 +1,8 @@
 # Downloading a Pre-built Binary
 
 Each [GitHub release](https://github.com/pgEdge/radar/releases) includes static
-radar binaries for Linux on amd64 and arm64. The release also
-includes a `checksums.txt` file with the SHA-256 checksum of each binary.
+radar binaries for Linux on amd64 and arm64. The release also includes a
+`checksums.txt` file with the SHA-256 checksum of each binary.
 
 Use the following steps to install a pre-built binary on Linux:
 

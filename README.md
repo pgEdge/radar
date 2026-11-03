@@ -35,8 +35,8 @@ The radar documentation consists of the following pages:
       Documents collecting system data, PostgreSQL data, or both.
     - [Reviewing the Command-Line Options](docs/using/index.md#reviewing-the-command-line-options) -
       Lists every radar option.
-    - [Excluding Collectors](docs/using/index.md#excluding-collectors) - Documents
-      skipping and enabling individual collectors.
+    - [Excluding Collectors](docs/using/index.md#excluding-collectors) -
+      Documents skipping and enabling individual collectors.
     - [Reading the Archive](docs/using/reading_the_archive.md) - Describes the
       archive layout and file formats.
 - [Collector Reference](docs/collector_reference/index.md) - Describes the
@@ -73,11 +73,10 @@ connection is optional; without one, radar collects system data only. When a
 command, file, or view is unavailable, radar skips that collector and continues
 the run.
 
-pgEdge publishes radar as RPM and DEB packages and as pre-built Linux
-binaries, so you do not need to build radar yourself on Linux; on macOS, build
-radar from source. The
-[Installing radar](#installing-radar) section describes each method, starting
-with the simplest.
+pgEdge publishes radar as RPM and DEB packages and as pre-built Linux binaries,
+so you do not need to build radar yourself on Linux; on macOS, build radar from
+source. The [Installing radar](#installing-radar) section describes each
+method, starting with the simplest.
 
 ## Installing radar
 
@@ -147,8 +146,8 @@ Use the following steps to install the package:
 ### Downloading a Pre-built Binary
 
 Each [GitHub release](https://github.com/pgEdge/radar/releases) includes static
-radar binaries for Linux on amd64 and arm64. The release also
-includes a `checksums.txt` file with the SHA-256 checksum of each binary.
+radar binaries for Linux on amd64 and arm64. The release also includes a
+`checksums.txt` file with the SHA-256 checksum of each binary.
 
 Use the following steps to install a pre-built binary on Linux:
 
