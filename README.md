@@ -27,7 +27,7 @@ The radar documentation consists of the following pages:
       Lists the PostgreSQL environment variables that radar reads.
     - [Choosing an Authentication Method](docs/configuring/authentication.md) -
       Documents password, LDAP, and certificate authentication.
-    - [Choosing Permissions](docs/configuring/permissions.md) - Compares
+    - [Managing Permissions](docs/configuring/permissions.md) - Compares
       superuser, `pg_monitor`, and limited-permission collections.
 - [Using radar](docs/using/index.md) - Describes running a collection and
   reading the results.

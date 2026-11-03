@@ -1,4 +1,4 @@
-# Choosing Permissions
+# Managing Permissions
 
 The privileges of the operating system user and of the PostgreSQL role
 determine how much data radar can collect.

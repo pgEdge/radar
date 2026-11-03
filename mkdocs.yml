@@ -60,7 +60,7 @@ nav:
   - Configuring radar:
       - configuring/index.md
       - Choosing an Authentication Method: configuring/authentication.md
-      - Choosing Permissions: configuring/permissions.md
+      - Managing Permissions: configuring/permissions.md
   - Using radar:
       - using/index.md
       - Reading the Archive: using/reading_the_archive.md
