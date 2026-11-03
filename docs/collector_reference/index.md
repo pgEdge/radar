@@ -27,6 +27,11 @@ The following table describes the system data that radar collects:
 | Cloud and hardware identity | The DMI fields `bios_vendor`, `chassis_asset_tag`, `product_name`, and `sys_vendor`. |
 | Container detection | radar detects a container when `/.dockerenv` exists, when `/proc/1/cgroup` names `docker`, `kubepods`, `containerd`, or `lxc`, or when `KUBERNETES_SERVICE_HOST` is set; inside a container, radar also collects the container environment variables and the Kubernetes namespace. |
 
+For more information, see
+[Collecting Cross-Platform System Data](cross_platform_system.md),
+[Collecting Linux System Data](linux_system.md), and
+[Collecting macOS System Data](macos_system.md).
+
 ## Collecting PostgreSQL Instance Data
 
 The following table describes the instance-wide PostgreSQL data that radar
@@ -42,6 +47,9 @@ collects:
 | Catalog | `pg_available_extension_versions`, `pg_database` (including the `datfrozenxid` and `datminmxid` wraparound headroom and `datconnlimit`), `pg_database_size()`, `pg_roles`, `pg_tablespace_size()`, `version()` |
 | Control file | `pg_control_checkpoint()`, `pg_control_init()`, `pg_control_recovery()`, and `pg_control_system()` return the `pg_controldata` content as SQL. |
 | Log directory | `pg_ls_logdir()` lists the name, size, and modification time of each file; radar never reads log contents. |
+
+For more information, see
+[Collecting PostgreSQL Instance Data](postgresql_instance.md).
 
 ## Collecting Per-Database Data
 
@@ -59,6 +67,8 @@ The following table describes the data that radar collects from each database:
 | Statistics | `pg_stat_database`, including conflicts, deadlocks, temporary files, and the statistics reset time. |
 | Bloat estimate | radar always collects a heuristic bloat estimate from `pg_stats`. |
 
+For more information, see [Collecting Per-Database Data](per_database.md).
+
 ## Collecting pg_statviz Data
 
 When a database has the [pg_statviz](https://github.com/vyruss/pg_statviz)
@@ -66,6 +76,8 @@ extension installed, radar collects its time-series statistics from
 `pgstatviz.blocking`, `pgstatviz.buf`, `pgstatviz.conf`, `pgstatviz.conn`,
 `pgstatviz.db`, `pgstatviz.io`, `pgstatviz.lock`, `pgstatviz.repl`,
 `pgstatviz.slru`, `pgstatviz.snapshots`, `pgstatviz.wait`, and `pgstatviz.wal`.
+
+For more information, see [Collecting pg_statviz Data](pg_statviz.md).
 
 ## Collecting PgBouncer Configuration
 
@@ -78,6 +90,8 @@ directory entry only; the file holds credentials, and radar never collects its
 contents. radar reads the first of `/etc/pgbouncer` and
 `/usr/local/etc/pgbouncer` that exists; use `--pgbouncer-conf` to name another
 configuration directory.
+
+For more information, see [Collecting PgBouncer Configuration](pgbouncer.md).
 
 ## Collecting Spock Replication State
 
@@ -95,6 +109,8 @@ jsonb and text images of the conflicting rows. radar does not collect
 password. radar keeps `error_message`; Spock stores no `DETAIL`, so the
 offending key of a constraint violation is absent. An error whose primary
 message embeds a value still includes that value.
+
+For more information, see [Collecting Spock Data](spock.md).
 
 ## Protecting Sensitive Data
 
