@@ -32,5 +32,6 @@ The following table describes the environment variables that radar reads:
 | `PGSSLKEY` | Specifies the client SSL private key file. |
 | `PGSSLROOTCERT` | Specifies the SSL root (CA) certificate file. |
 
-The pgx driver also applies the other libpq environment variables that radar
-does not set itself, such as `PGAPPNAME` and `PGCONNECT_TIMEOUT`.
+The pgx driver also applies some other libpq environment variables, such as
+`PGAPPNAME` and `PGCONNECT_TIMEOUT`. pgx does not support `PGSSLCRL` or
+`PGSSLCRLDIR`, so radar does not check certificate revocation lists.

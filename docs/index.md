@@ -10,7 +10,7 @@ connection is optional; without one, radar collects system data only. When a
 command, file, or view is unavailable, radar skips that collector and continues
 the run.
 
-pgEdge publishes radar as RPM and DEB packages and as pre-built Linux binaries,
-so you do not need to build radar yourself on Linux; on macOS, build radar from
-source. The [Installing radar](installing/index.md) section describes each
-method, starting with the simplest.
+pgEdge publishes radar as RPM and DEB packages and as pre-built binaries for
+Linux and macOS, so you do not need to build radar yourself. The
+[Installing radar](installing/index.md) section describes each method, starting
+with the simplest.

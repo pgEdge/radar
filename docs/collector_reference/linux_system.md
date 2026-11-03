@@ -76,9 +76,13 @@ table describes the files that these collectors produce:
 ## Reading Cgroup v2 Resource Limits
 
 radar attempts the cgroup v2 collectors on Linux and skips any collector whose
-source is unavailable. Inside a container, these files show the container's
-resource limits; on a host, they show the values of the cgroup that radar runs
-in. The following table describes the cgroup v2 files:
+source is unavailable. radar reads these files at fixed paths under
+`/sys/fs/cgroup`, so they report the cgroup v2 hierarchy mounted there. Inside
+a container whose cgroup namespace roots that mount at the container's cgroup,
+the files show the container's resource limits. On a host, the mount is the
+root of the hierarchy, where only `cpuset.cpus.effective` and `memory.stat`
+exist, so radar skips the other files. The following table describes the cgroup
+v2 files:
 
 | File | Source | Description |
 |------|--------|-------------|

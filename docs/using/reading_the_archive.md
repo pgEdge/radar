@@ -56,7 +56,9 @@ The following table describes the file formats in the archive:
 
 !!! hint
 
-    radar streams data directly into the ZIP file without buffering the data in
-    memory. radar runs the collectors sequentially with a small memory
-    footprint, and opens one connection per database for all of the queries in
-    that database. A complete collection typically takes seconds.
+    radar streams query results directly into the ZIP file, and reads each
+    command's output and each file in full before writing its entry. radar runs
+    the collectors sequentially, so memory use stays close to the size of the
+    largest command output or file, and opens one connection per database for
+    all of the queries in that database. A complete collection typically takes
+    seconds.
