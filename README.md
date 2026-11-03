@@ -112,9 +112,9 @@ brew install postgresql@18
 pgEdge publishes radar as the `pgedge-radar` package in the pgEdge Enterprise
 Postgres repository for Enterprise Linux, Debian, and Ubuntu. The repository
 configuration enables signature checks with the pgEdge signing key. The package
-installs the `radar` binary in `/usr/bin`. The pgEdge repository requires a
-certificate from pgEdge, so request and install a certificate before you
-install the package.
+installs the `radar` binary in `/usr/bin`. The pgEdge repository requires an
+access certificate from pgEdge; you must request and install a certificate
+before you install the package.
 
 Use the following steps to install the package:
 
