@@ -818,9 +818,9 @@ func TestGenerateDatabaseTasksRegistersAllRegistries(t *testing.T) {
 	}
 	defer closeErrCheck(db, "mock database")
 
-	mock.ExpectQuery("SELECT datname FROM pg_database").
-		WillReturnRows(sqlmock.NewRows([]string{"datname"}).
-			AddRow("mydb").AddRow("template0").AddRow("template1"))
+	mock.ExpectQuery("SELECT datname, has_database_privilege").
+		WillReturnRows(sqlmock.NewRows([]string{"datname", "has_database_privilege"}).
+			AddRow("mydb", true).AddRow("template0", true).AddRow("template1", true))
 
 	tasks, conns, err := generateDatabaseTasks(db)
 	if err != nil {

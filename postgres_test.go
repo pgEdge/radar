@@ -194,7 +194,7 @@ func TestPGQueryCollectorUnavailableAsSkip(t *testing.T) {
 			}
 			mock.ExpectQuery("SELECT").WillReturnError(tt.pgErr)
 
-			collector := pgQueryCollector(db, "SELECT 1")
+			collector := pgQueryCollector(db, "", "SELECT 1")
 			err = collector(&Config{}, &bytes.Buffer{})
 
 			if err == nil {
@@ -310,7 +310,7 @@ func TestDBConnsAttemptsAnUnreachableDatabaseOnce(t *testing.T) {
 
 	var buf bytes.Buffer
 	var skipErr SkipError
-	if err := conns.exec(cfg, "mydb", "SELECT 1", &buf); err == nil || errors.As(err, &skipErr) {
+	if err := conns.exec(cfg, "mydb", "", "SELECT 1", &buf); err == nil || errors.As(err, &skipErr) {
 		t.Fatalf("first task = %v, want the failure reported", err)
 	}
 	// What the first task costs is not fixed, since database/sql retries a
@@ -321,11 +321,153 @@ func TestDBConnsAttemptsAnUnreachableDatabaseOnce(t *testing.T) {
 		t.Fatal("the first task never connected")
 	}
 
-	if err := conns.exec(cfg, "mydb", "SELECT 1", &buf); !errors.As(err, &skipErr) {
+	if err := conns.exec(cfg, "mydb", "", "SELECT 1", &buf); !errors.As(err, &skipErr) {
 		t.Errorf("second task = %v, want SkipError", err)
 	}
 	if got := attempts.Load(); got != attempted {
 		t.Errorf("second task connected again: %d attempts, want %d", got, attempted)
+	}
+}
+
+// TestGenerateDatabaseTasksSkipsDatabaseWithoutConnect pins that a database
+// this role has no CONNECT privilege on keeps its tasks, each a SkipError, and
+// is never connected to, so no refused login reaches the server log.
+func TestGenerateDatabaseTasksSkipsDatabaseWithoutConnect(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer closeErrCheck(listener, "probe listener")
+
+	var attempts atomic.Int64
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			attempts.Add(1)
+			closeErrCheck(conn, "probe connection")
+		}
+	}()
+
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create mock: %v", err)
+	}
+	defer closeErrCheck(db, "mock database")
+	mock.ExpectQuery(`SELECT datname, has_database_privilege\(oid, 'CONNECT'\) FROM pg_database`).
+		WillReturnRows(sqlmock.NewRows([]string{"datname", "has_database_privilege"}).AddRow("noconnect", false))
+
+	tasks, conns, err := generateDatabaseTasks(db)
+	if err != nil {
+		t.Fatalf("generateDatabaseTasks: %v", err)
+	}
+	defer closeErrCheck(conns, "database connection")
+	if len(tasks) == 0 {
+		t.Fatal("no tasks for noconnect, want them kept as a trace")
+	}
+
+	cfg := &Config{Host: "127.0.0.1", Port: listener.Addr().(*net.TCPAddr).Port,
+		Database: "postgres", Username: "radar", SSLMode: "disable"}
+	var buf bytes.Buffer
+	for _, task := range tasks {
+		var skipErr SkipError
+		if err := task.Collector(cfg, &buf); !errors.As(err, &skipErr) {
+			t.Errorf("%s = %v, want SkipError", task.Name, err)
+		}
+	}
+	if got := attempts.Load(); got != 0 {
+		t.Errorf("connected %d times to a database without CONNECT, want 0", got)
+	}
+}
+
+// TestPGQueryCollectorSkipsTaskWhoseRelationIsMissing pins that a task naming
+// its relation looks it up first and, with the relation absent, skips without
+// running its query, which would log an ERROR on the server.
+func TestPGQueryCollectorSkipsTaskWhoseRelationIsMissing(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create mock: %v", err)
+	}
+	defer closeErrCheck(db, "mock database")
+	mock.ExpectQuery("to_regclass").WithArgs("pg_stat_statements").
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+
+	var buf bytes.Buffer
+	err = pgQueryCollector(db, "pg_stat_statements", "SELECT query FROM pg_stat_statements")(&Config{}, &buf)
+	var skipErr SkipError
+	if !errors.As(err, &skipErr) {
+		t.Fatalf("err = %v, want SkipError", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Error(err)
+	}
+}
+
+// TestPGQueryCollectorRunsTaskWhoseRelationExists pins that the lookup lets a
+// task run once its relation exists.
+func TestPGQueryCollectorRunsTaskWhoseRelationExists(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create mock: %v", err)
+	}
+	defer closeErrCheck(db, "mock database")
+	mock.ExpectQuery("to_regclass").WithArgs("pg_stat_statements").
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	mock.ExpectQuery("SELECT query FROM pg_stat_statements").
+		WillReturnRows(sqlmock.NewRows([]string{"query"}).AddRow("SELECT 1"))
+
+	var buf bytes.Buffer
+	if err := pgQueryCollector(db, "pg_stat_statements", "SELECT query FROM pg_stat_statements")(&Config{}, &buf); err != nil {
+		t.Fatalf("collect failed: %v", err)
+	}
+	if !strings.Contains(buf.String(), "SELECT 1") {
+		t.Errorf("output %q lacks the query's row", buf.String())
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Error(err)
+	}
+}
+
+// TestDBConnsSkipsTaskWhoseRelationIsMissing pins the same lookup on the
+// per-database path, made in the database the task runs in.
+func TestDBConnsSkipsTaskWhoseRelationIsMissing(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create mock: %v", err)
+	}
+	defer closeErrCheck(db, "mock database")
+	mock.ExpectQuery("to_regclass").WithArgs("spock.node").
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+
+	cfg := &Config{Database: "mydb", DB: db}
+	conns := &dbConns{}
+	var buf bytes.Buffer
+	err = conns.exec(cfg, "mydb", "spock.node", "SELECT * FROM spock.node", &buf)
+	var skipErr SkipError
+	if !errors.As(err, &skipErr) {
+		t.Fatalf("err = %v, want SkipError", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Error(err)
+	}
+}
+
+// TestExtensionTasksNameTheirRelation pins that every task reading an
+// extension's objects names a relation from its query, so radar looks it up
+// before it queries.
+func TestExtensionTasksNameTheirRelation(t *testing.T) {
+	var all []SimpleQueryTask
+	for _, registry := range [][]SimpleQueryTask{postgresQueryTasks, perDatabaseQueryTasks, pgStatvizQueryTasks, spockQueryTasks} {
+		all = append(all, registry...)
+	}
+	for _, task := range all {
+		for _, reads := range []string{"pg_stat_statements", "pgstatviz.", "spock."} {
+			if strings.Contains(task.Query, reads) && (task.Relation == "" || !strings.Contains(task.Query, task.Relation)) {
+				t.Errorf("%s reads %s but names relation %q", task.Name, reads, task.Relation)
+			}
+		}
 	}
 }
 

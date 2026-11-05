@@ -28,6 +28,14 @@ this project adheres to
 - The documentation warns that an archive can contain passwords and other
   secrets, and asks you to review an archive before you share it.
 
+### Fixed
+
+- radar skips a database on which the role lacks the `CONNECT` privilege
+  without connecting to it, so the server log records no refused connection.
+- radar checks that each pg_stat_statements, pg_statviz, and Spock relation
+  exists before querying the relation, so a missing extension or an older
+  pg_statviz version leaves no error in the server log.
+
 ## [0.6.2] - 2026-09-03
 
 ### Changed

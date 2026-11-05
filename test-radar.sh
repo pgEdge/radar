@@ -53,6 +53,10 @@ su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"CREATE TABLE pa
 su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"CREATE TABLE part_child PARTITION OF part_parent FOR VALUES FROM ('2020-01-01') TO ('2030-01-01');\""
 su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"CREATE EXTENSION pg_statviz;\""
 su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"SELECT pgstatviz.snapshot();\""
+# A database testuser may not connect to, which radar records without
+# connecting, so the server logs no refused login
+su - postgres -c "/usr/lib/postgresql/18/bin/createdb noconnect"
+su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"REVOKE CONNECT ON DATABASE noconnect FROM PUBLIC;\""
 
 echo ""
 echo "Creating non-root system user..."
@@ -272,6 +276,30 @@ validate_session_count() {
 }
 
 # Helper function to validate ZIP contents
+# server_log prints the server's log. validate_server_log reads only what
+# follows the first SERVER_LOG_CHECKED bytes, which an earlier check covered.
+server_log() {
+	cat /var/lib/postgresql/18/main/log/*.log 2>/dev/null
+}
+SERVER_LOG_CHECKED=0
+
+# validate_server_log fails a scenario whose radar run left an error in the
+# server log for something radar can check before it queries: a relation or
+# schema that does not exist, or a database the role may not connect to.
+validate_server_log() {
+	local scenario="$1"
+	local found
+	found=$(server_log | tail -c +"$((SERVER_LOG_CHECKED + 1))" |
+		grep -E 'ERROR: +(relation|schema) "[^"]+" does not exist|FATAL: +permission denied for database' || true)
+	SERVER_LOG_CHECKED=$(server_log | wc -c)
+	if [ -n "$found" ]; then
+		echo -e "${RED}✗ $scenario FAILED: radar left errors in the server log:${NC}"
+		echo "$found"
+		return 1
+	fi
+	return 0
+}
+
 validate_zip() {
 	local zip_file="$1"
 	local scenario="$2"
@@ -332,8 +360,14 @@ validate_zip() {
 		return 1
 	fi
 
+	if ! validate_server_log "$scenario"; then
+		return 1
+	fi
+
 	return 0
 }
+
+SERVER_LOG_CHECKED=$(server_log | wc -c)
 
 # Scenario 1: Root + superuser
 echo ""
@@ -347,6 +381,10 @@ if ! validate_session_count "$SESSIONS_BEFORE" "Scenario 1"; then
 fi
 ZIP1=$(ls -t radar-*.zip | head -1)
 if ! validate_zip "$ZIP1" "Scenario 1" "yes"; then
+	exit 1
+fi
+if ! unzip -l "$ZIP1" | grep -q " databases/noconnect/"; then
+	echo -e "${RED}✗ Scenario 1 FAILED: the superuser collected nothing from noconnect${NC}"
 	exit 1
 fi
 echo -e "${GREEN}✓ Scenario 1 PASSED${NC}"

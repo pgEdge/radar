@@ -266,11 +266,15 @@ configuration file collector is a `SimpleConfigFileTask`. The following
 definitions from `postgres_tasks.go` show both types:
 
 ```go
-// SimpleQueryTask defines a PostgreSQL query-based collection
+// SimpleQueryTask defines a PostgreSQL query-based collection. Relation names
+// the relation that Query reads when it can be absent, such as a view that an
+// extension or a newer extension version provides. radar runs Query only when
+// that relation exists, since the server logs a failed query as an ERROR.
 type SimpleQueryTask struct {
     Name        string
     ArchivePath string
     Query       string
+    Relation    string
 }
 
 // SimpleConfigFileTask defines a PostgreSQL config file collection
@@ -310,13 +314,16 @@ replaces with the database name. The following entry from
 ```
 
 The pg_statviz collectors in `pgStatvizQueryTasks` and the Spock collectors in
-`spockQueryTasks` are also per-database query collectors. The following entry
-from `pgStatvizQueryTasks` defines a pg_statviz collector:
+`spockQueryTasks` are also per-database query collectors. Each of these
+collectors names the relation that its query reads in `Relation`, and radar
+runs the query only when that relation exists. The following entry from
+`pgStatvizQueryTasks` defines a pg_statviz collector:
 
 ```go
 // In postgres_tasks.go (pgStatvizQueryTasks)
 {
     Name:        "pg_statviz_buf",
+    Relation:    "pgstatviz.buf",
     ArchivePath: "pg_statviz/%s/buf.tsv",
     Query:       "SELECT * FROM pgstatviz.buf ORDER BY snapshot_tstamp",
 },
@@ -531,6 +538,10 @@ scenario and the collection that the scenario expects:
 
 All scenarios verify that radar collects the required data and handles the
 permission limitations of each scenario.
+
+Each scenario also checks the server log for errors that the radar run caused.
+A query against a missing relation, or a connection to a database on which the
+role lacks the `CONNECT` privilege, fails the scenario.
 
 ### Comparing Collector Availability by Scenario
 

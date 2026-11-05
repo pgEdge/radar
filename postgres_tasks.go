@@ -15,11 +15,15 @@ import (
 	"io"
 )
 
-// SimpleQueryTask defines a PostgreSQL query-based collection
+// SimpleQueryTask defines a PostgreSQL query-based collection. Relation names
+// the relation that Query reads when it can be absent, such as a view that an
+// extension or a newer extension version provides. radar runs Query only when
+// that relation exists, since the server logs a failed query as an ERROR.
 type SimpleQueryTask struct {
 	Name        string
 	ArchivePath string
 	Query       string
+	Relation    string
 }
 
 // SimpleConfigFileTask defines a PostgreSQL config file collection
@@ -304,16 +308,19 @@ ORDER BY s.pid`,
 	},
 	{
 		Name:        "stat_statements_calls",
+		Relation:    "pg_stat_statements",
 		ArchivePath: "postgresql/stat_statements_calls.tsv",
 		Query:       "SELECT userid, dbid, query, calls, total_exec_time, mean_exec_time, max_exec_time, rows FROM pg_stat_statements ORDER BY calls DESC LIMIT 100",
 	},
 	{
 		Name:        "stat_statements_max_time",
+		Relation:    "pg_stat_statements",
 		ArchivePath: "postgresql/stat_statements_max_time.tsv",
 		Query:       "SELECT userid, dbid, query, calls, total_exec_time, mean_exec_time, max_exec_time, rows FROM pg_stat_statements ORDER BY max_exec_time DESC LIMIT 100",
 	},
 	{
 		Name:        "stat_statements_total_time",
+		Relation:    "pg_stat_statements",
 		ArchivePath: "postgresql/stat_statements_total_time.tsv",
 		Query:       "SELECT userid, dbid, query, calls, total_exec_time, mean_exec_time, max_exec_time, rows FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 100",
 	},
@@ -718,61 +725,73 @@ LIMIT 1000`,
 var pgStatvizQueryTasks = []SimpleQueryTask{
 	{
 		Name:        "pg_statviz_blocking",
+		Relation:    "pgstatviz.blocking",
 		ArchivePath: "pg_statviz/%s/blocking.tsv",
 		Query:       "SELECT * FROM pgstatviz.blocking ORDER BY snapshot_tstamp",
 	},
 	{
 		Name:        "pg_statviz_buf",
+		Relation:    "pgstatviz.buf",
 		ArchivePath: "pg_statviz/%s/buf.tsv",
 		Query:       "SELECT * FROM pgstatviz.buf ORDER BY snapshot_tstamp",
 	},
 	{
 		Name:        "pg_statviz_conf",
+		Relation:    "pgstatviz.conf",
 		ArchivePath: "pg_statviz/%s/conf.tsv",
 		Query:       "SELECT * FROM pgstatviz.conf ORDER BY snapshot_tstamp",
 	},
 	{
 		Name:        "pg_statviz_conn",
+		Relation:    "pgstatviz.conn",
 		ArchivePath: "pg_statviz/%s/conn.tsv",
 		Query:       "SELECT * FROM pgstatviz.conn ORDER BY snapshot_tstamp",
 	},
 	{
 		Name:        "pg_statviz_db",
+		Relation:    "pgstatviz.db",
 		ArchivePath: "pg_statviz/%s/db.tsv",
 		Query:       "SELECT * FROM pgstatviz.db ORDER BY snapshot_tstamp",
 	},
 	{
 		Name:        "pg_statviz_io",
+		Relation:    "pgstatviz.io",
 		ArchivePath: "pg_statviz/%s/io.tsv",
 		Query:       "SELECT * FROM pgstatviz.io ORDER BY snapshot_tstamp",
 	},
 	{
 		Name:        "pg_statviz_lock",
+		Relation:    "pgstatviz.lock",
 		ArchivePath: "pg_statviz/%s/lock.tsv",
 		Query:       "SELECT * FROM pgstatviz.lock ORDER BY snapshot_tstamp",
 	},
 	{
 		Name:        "pg_statviz_repl",
+		Relation:    "pgstatviz.repl",
 		ArchivePath: "pg_statviz/%s/repl.tsv",
 		Query:       "SELECT * FROM pgstatviz.repl ORDER BY snapshot_tstamp",
 	},
 	{
 		Name:        "pg_statviz_slru",
+		Relation:    "pgstatviz.slru",
 		ArchivePath: "pg_statviz/%s/slru.tsv",
 		Query:       "SELECT * FROM pgstatviz.slru ORDER BY snapshot_tstamp",
 	},
 	{
 		Name:        "pg_statviz_snapshots",
+		Relation:    "pgstatviz.snapshots",
 		ArchivePath: "pg_statviz/%s/snapshots.tsv",
 		Query:       "SELECT * FROM pgstatviz.snapshots ORDER BY snapshot_tstamp",
 	},
 	{
 		Name:        "pg_statviz_wait",
+		Relation:    "pgstatviz.wait",
 		ArchivePath: "pg_statviz/%s/wait.tsv",
 		Query:       "SELECT * FROM pgstatviz.wait ORDER BY snapshot_tstamp",
 	},
 	{
 		Name:        "pg_statviz_wal",
+		Relation:    "pgstatviz.wal",
 		ArchivePath: "pg_statviz/%s/wal.tsv",
 		Query:       "SELECT * FROM pgstatviz.wal ORDER BY snapshot_tstamp",
 	},
@@ -791,6 +810,7 @@ var pgStatvizQueryTasks = []SimpleQueryTask{
 var spockQueryTasks = []SimpleQueryTask{
 	{
 		Name:        "spock_channel_summary_stats",
+		Relation:    "spock.channel_summary_stats",
 		ArchivePath: "spock/%s/channel_summary_stats.tsv",
 		Query:       "SELECT * FROM spock.channel_summary_stats ORDER BY sub_name",
 	},
@@ -802,6 +822,7 @@ var spockQueryTasks = []SimpleQueryTask{
 		// not included, and without the message the log says only that
 		// something failed.
 		Name:        "spock_exception_log",
+		Relation:    "spock.exception_log",
 		ArchivePath: "spock/%s/exception_log.tsv",
 		Query: `SELECT remote_origin, remote_commit_ts, command_counter,
        retry_errored_at, remote_xid, local_origin, local_commit_ts,
@@ -813,16 +834,19 @@ LIMIT 1000`,
 	},
 	{
 		Name:        "spock_lag_tracker",
+		Relation:    "spock.lag_tracker",
 		ArchivePath: "spock/%s/lag_tracker.tsv",
 		Query:       "SELECT * FROM spock.lag_tracker ORDER BY origin_name, receiver_name",
 	},
 	{
 		Name:        "spock_local_node",
+		Relation:    "spock.local_node",
 		ArchivePath: "spock/%s/local_node.tsv",
 		Query:       "SELECT * FROM spock.local_node ORDER BY node_id",
 	},
 	{
 		Name:        "spock_local_sync_status",
+		Relation:    "spock.local_sync_status",
 		ArchivePath: "spock/%s/local_sync_status.tsv",
 		Query:       "SELECT * FROM spock.local_sync_status ORDER BY sync_subid, sync_nspname, sync_relname",
 	},
@@ -831,6 +855,7 @@ LIMIT 1000`,
 		// argument to spock.node_create, defaulting to NULL, so what it holds
 		// depends on the deployment rather than on Spock.
 		Name:        "spock_node",
+		Relation:    "spock.node",
 		ArchivePath: "spock/%s/node.tsv",
 		Query:       "SELECT node_id, node_name, location, country FROM spock.node ORDER BY node_name",
 	},
@@ -838,21 +863,25 @@ LIMIT 1000`,
 		// Column names only, no values: this table records which columns hold
 		// personally identifiable information.
 		Name:        "spock_pii",
+		Relation:    "spock.pii",
 		ArchivePath: "spock/%s/pii.tsv",
 		Query:       "SELECT * FROM spock.pii ORDER BY pii_schema, pii_table, pii_column",
 	},
 	{
 		Name:        "spock_progress",
+		Relation:    "spock.progress",
 		ArchivePath: "spock/%s/progress.tsv",
 		Query:       "SELECT * FROM spock.progress ORDER BY node_id, remote_node_id",
 	},
 	{
 		Name:        "spock_replication_set",
+		Relation:    "spock.replication_set",
 		ArchivePath: "spock/%s/replication_set.tsv",
 		Query:       "SELECT * FROM spock.replication_set ORDER BY set_name",
 	},
 	{
 		Name:        "spock_replication_set_table",
+		Relation:    "spock.replication_set_table",
 		ArchivePath: "spock/%s/replication_set_table.tsv",
 		Query:       "SELECT * FROM spock.replication_set_table ORDER BY set_id, set_reloid",
 	},
@@ -860,6 +889,7 @@ LIMIT 1000`,
 		// local_tuple and remote_tuple are excluded deliberately: they are text
 		// images of the conflicting rows.
 		Name:        "spock_resolutions",
+		Relation:    "spock.resolutions",
 		ArchivePath: "spock/%s/resolutions.tsv",
 		Query: `SELECT id, node_name, log_time, relname, idxname,
        conflict_type, conflict_resolution, local_origin, local_xid,
@@ -871,11 +901,13 @@ LIMIT 1000`,
 	},
 	{
 		Name:        "spock_subscription",
+		Relation:    "spock.subscription",
 		ArchivePath: "spock/%s/subscription.tsv",
 		Query:       "SELECT * FROM spock.subscription ORDER BY sub_name",
 	},
 	{
 		Name:        "spock_tables",
+		Relation:    "spock.tables",
 		ArchivePath: "spock/%s/tables.tsv",
 		Query:       "SELECT * FROM spock.tables ORDER BY nspname, relname",
 	},
@@ -889,7 +921,7 @@ func buildQueryTasks(category string, tasks []SimpleQueryTask, db *sql.DB) []Col
 			Category:    category,
 			Name:        t.Name,
 			ArchivePath: t.ArchivePath,
-			Collector:   pgQueryCollector(db, t.Query),
+			Collector:   pgQueryCollector(db, t.Relation, t.Query),
 		}
 	}
 	return result
