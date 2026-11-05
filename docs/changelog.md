@@ -28,6 +28,13 @@ this project adheres to
 - The documentation warns that an archive can contain passwords and other
   secrets, and asks you to review an archive before you share it.
 
+### Fixed
+
+- radar collects `postgresql.conf`, `pg_hba.conf`, and `pg_ident.conf` from the
+  paths that the `config_file`, `hba_file`, and `ident_file` settings name, so
+  the files are collected on Debian and Ubuntu package clusters, which keep
+  them under `/etc/postgresql`.
+
 ## [0.6.2] - 2026-09-03
 
 ### Changed

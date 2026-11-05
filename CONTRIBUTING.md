@@ -273,11 +273,14 @@ type SimpleQueryTask struct {
     Query       string
 }
 
-// SimpleConfigFileTask defines a PostgreSQL config file collection
+// SimpleConfigFileTask defines a PostgreSQL config file collection. Setting
+// names the server setting that holds the file's path (config_file, hba_file
+// or ident_file); when it is empty, the file is Filename in the data directory.
 type SimpleConfigFileTask struct {
     Name        string
     ArchivePath string
     Filename    string
+    Setting     string
 }
 ```
 
@@ -323,9 +326,10 @@ from `pgStatvizQueryTasks` defines a pg_statviz collector:
 ```
 
 The `buildConfigFileTasks` function wraps each configuration file entry with
-`collectPGConfigFile`, which reads the named file from the PostgreSQL data
-directory. The following entry from `postgresConfigFileTasks` defines a
-configuration file collector:
+`collectPGConfigFile`, which reads the file from the path that the server
+setting in `Setting` names, or from the PostgreSQL data directory when
+`Setting` is empty. The following entry from `postgresConfigFileTasks` defines
+a configuration file collector:
 
 ```go
 // In postgres.go (postgresConfigFileTasks)
@@ -333,6 +337,7 @@ configuration file collector:
     Name:        "pg_hba.conf",
     ArchivePath: "postgresql/pg_hba.conf",
     Filename:    "pg_hba.conf",
+    Setting:     "hba_file",
 },
 ```
 
@@ -547,9 +552,8 @@ collector:
 |-----------|----|----|----|----|-------------|
 | `dmesg` | Collected | Collected | Skipped | Skipped | Root system access |
 | `dmesg-t` | Collected | Collected | Skipped | Skipped | Root system access |
-| `pg_hba.conf` | Collected | Collected | Skipped | Skipped | Filesystem access to data directory |
-| `pg_ident.conf` | Collected | Collected | Skipped | Skipped | Filesystem access to data directory |
-| `postgresql.conf` | Collected | Collected | Skipped | Skipped | Filesystem access to data directory |
+| `pg_hba.conf` | Collected | Collected | Skipped | Skipped | Filesystem access to the `hba_file` path |
+| `pg_ident.conf` | Collected | Collected | Skipped | Skipped | Filesystem access to the `ident_file` path |
 | `postgresql.auto.conf` | Collected | Collected | Skipped | Skipped | Filesystem access to data directory |
 | `pg_hba_file_rules` | Collected | Skipped | Collected | Skipped | PostgreSQL superuser |
 | `replication_origin` | Collected | Skipped | Collected | Skipped | PostgreSQL superuser |

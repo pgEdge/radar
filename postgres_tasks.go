@@ -22,11 +22,14 @@ type SimpleQueryTask struct {
 	Query       string
 }
 
-// SimpleConfigFileTask defines a PostgreSQL config file collection
+// SimpleConfigFileTask defines a PostgreSQL config file collection. Setting
+// names the server setting that holds the file's path (config_file, hba_file
+// or ident_file); when it is empty, the file is Filename in the data directory.
 type SimpleConfigFileTask struct {
 	Name        string
 	ArchivePath string
 	Filename    string
+	Setting     string
 }
 
 // PostgreSQL instance-level query tasks (sorted alphabetically by name)
@@ -899,13 +902,13 @@ func buildQueryTasks(category string, tasks []SimpleQueryTask, db *sql.DB) []Col
 func buildConfigFileTasks(category string, tasks []SimpleConfigFileTask, db *sql.DB) []CollectionTask {
 	result := make([]CollectionTask, len(tasks))
 	for i, t := range tasks {
-		filename := t.Filename // Capture loop variable
+		task := t // Capture loop variable
 		result[i] = CollectionTask{
 			Category:    category,
 			Name:        t.Name,
 			ArchivePath: t.ArchivePath,
 			Collector: func(cfg *Config, w io.Writer) error {
-				return collectPGConfigFile(db, cfg, filename, w)
+				return collectPGConfigFile(db, cfg, task, w)
 			},
 		}
 	}
