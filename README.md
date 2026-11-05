@@ -26,7 +26,7 @@ The radar documentation consists of the following pages:
     - [Setting Environment Variables](docs/configuring/index.md#setting-environment-variables) -
       Lists the PostgreSQL environment variables that radar reads.
     - [Choosing an Authentication Method](docs/configuring/authentication.md) -
-      Documents password, LDAP, and certificate authentication.
+      Documents password, LDAP, certificate, and GSSAPI authentication.
     - [Managing Permissions](docs/configuring/permissions.md) - Compares
       superuser, `pg_monitor`, and limited-permission collections.
 - [Using radar](docs/using/index.md) - Describes running a collection and
@@ -91,7 +91,7 @@ The requirements for radar include:
   when they are present.
 - PostgreSQL 12 or later; some collectors require a later version, as the
   [data reference](docs/collector_reference/index.md) notes.
-- Git and Go 1.25.12 or later for a build from source; the `go` directive in
+- Git and Go 1.26.10 or later for a build from source; the `go` directive in
   [go.mod](go.mod) sets this minimum.
 
 ### Understanding Platform Differences
@@ -181,20 +181,13 @@ On macOS, download `radar-darwin-arm64` or `radar-darwin-amd64` instead. Run
 
 ### Building from Source
 
-Building radar from source requires Git and Go 1.25.12 or later. The
+Building radar from source requires Git and Go 1.26.10 or later. The
 [Go installation guide](https://go.dev/doc/install) describes how to install a
-current Go release on any platform. On Ubuntu 22.04, 24.04, and 26.04, the
-`golang-1.25` package provides a suitable release; the following commands
-install the package and add its `go` command to your `PATH`:
-
-```bash
-sudo apt-get install -y golang-1.25
-export PATH=/usr/lib/go-1.25/bin:$PATH
-```
+current Go release on any platform.
 
 Use the following steps to build radar from source:
 
-1. Confirm that `go version` reports Go 1.25.12 or later:
+1. Confirm that `go version` reports Go 1.26.10 or later:
 
     ```bash
     go version

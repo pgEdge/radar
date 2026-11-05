@@ -20,7 +20,7 @@ this project adheres to
 ### Changed
 
 - The build instructions clone the pgEdge radar repository and require Go
-  1.25.12 or later.
+  1.26.10 or later.
 - The published data reference covers the control file, log directory,
   subscription statistics, freeze age, Spock, and PgBouncer collectors.
 - The documentation names the minimum PostgreSQL version of each collector that
@@ -30,6 +30,8 @@ this project adheres to
 
 ### Fixed
 
+- radar authenticates with GSSAPI (Kerberos), using the ticket in a file
+  credential cache.
 - radar skips a database on which the role lacks the `CONNECT` privilege
   without connecting to it, so the server log records no refused connection.
 - radar checks that each pg_stat_statements, pg_statviz, and Spock relation

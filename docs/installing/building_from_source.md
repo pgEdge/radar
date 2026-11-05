@@ -1,19 +1,12 @@
 # Building from Source
 
-Building radar from source requires Git and Go 1.25.12 or later. The
+Building radar from source requires Git and Go 1.26.10 or later. The
 [Go installation guide](https://go.dev/doc/install) describes how to install a
-current Go release on any platform. On Ubuntu 22.04, 24.04, and 26.04, the
-`golang-1.25` package provides a suitable release; the following commands
-install the package and add its `go` command to your `PATH`:
-
-```bash
-sudo apt-get install -y golang-1.25
-export PATH=/usr/lib/go-1.25/bin:$PATH
-```
+current Go release on any platform.
 
 Use the following steps to build radar from source:
 
-1. Confirm that `go version` reports Go 1.25.12 or later:
+1. Confirm that `go version` reports Go 1.26.10 or later:
 
     ```bash
     go version

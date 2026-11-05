@@ -13,15 +13,21 @@ package main
 import (
 	"archive/zip"
 	"bytes"
+	"context"
+	"database/sql"
 	"errors"
 	"flag"
 	"io"
+	"net"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/jackc/pgx/v5/pgproto3"
 )
 
 // Test execCommand helper
@@ -1401,5 +1407,51 @@ func TestConnectionStringQuoting(t *testing.T) {
 	s2 := cfg2.ConnectionString(cfg2.Database)
 	if !strings.Contains(s2, `password='it\'s'`) {
 		t.Errorf("expected escaped single quote in: %s", s2)
+	}
+}
+
+// A server that asks for GSSAPI authentication must reach the Kerberos
+// provider, which then reads the krb5.conf that KRB5_CONFIG names.
+func TestGSSAPIAuthUsesKerberosProvider(t *testing.T) {
+	krb5Conf := filepath.Join(t.TempDir(), "absent-krb5.conf")
+	t.Setenv("KRB5_CONFIG", krb5Conf)
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeErrCheck(ln, "listener")
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer closeErrCheck(conn, "server connection")
+		be := pgproto3.NewBackend(conn, conn)
+		if _, err := be.ReceiveStartupMessage(); err != nil {
+			return
+		}
+		be.Send(&pgproto3.AuthenticationGSS{})
+		_ = be.Flush()
+	}()
+
+	cfg := Config{
+		Host: "127.0.0.1", Port: ln.Addr().(*net.TCPAddr).Port,
+		Database: "db", Username: "user", SSLMode: "disable",
+	}
+	db, err := sql.Open("pgx", cfg.ConnectionString(cfg.Database))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeErrCheck(db, "database")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err = db.PingContext(ctx)
+	if err == nil {
+		t.Fatal("expected the GSSAPI handshake to fail without a krb5.conf")
+	}
+	if !strings.Contains(err.Error(), krb5Conf) {
+		t.Errorf("expected the Kerberos provider to read %s, got: %v", krb5Conf, err)
 	}
 }

@@ -395,9 +395,14 @@ echo ""
 echo "========================================"
 echo -e "${YELLOW}Scenario 2: Root + pg_monitor${NC}"
 echo "========================================"
-PGPASSWORD=testpass ./radar -h localhost -d testdb -U testuser -vv
+OUT2=$(PGPASSWORD=testpass ./radar -h localhost -d testdb -U testuser -vv 2>&1) || { echo "$OUT2"; exit 1; }
+echo "$OUT2"
 ZIP2=$(ls -t radar-*.zip | head -1)
 if ! validate_zip "$ZIP2" "Scenario 2" "yes"; then
+	exit 1
+fi
+if ! echo "$OUT2" | grep -qE '^⊘ noconnect/[^ ]+ \(unavailable\)$'; then
+	echo -e "${RED}✗ Scenario 2 FAILED: radar did not report the noconnect collectors as unavailable${NC}"
 	exit 1
 fi
 echo -e "${GREEN}✓ Scenario 2 PASSED${NC}"
@@ -546,14 +551,16 @@ chmod 600 "$PGDATA/server.keytab"
 # Start KDC
 krb5kdc
 
-# Configure PostgreSQL for GSSAPI
+# Configure PostgreSQL for GSSAPI, logging how each connection authenticated
 su - postgres -c "/usr/lib/postgresql/18/bin/psql -c \"ALTER SYSTEM SET krb_server_keyfile = '$PGDATA/server.keytab';\""
+su - postgres -c "/usr/lib/postgresql/18/bin/psql -c \"ALTER SYSTEM SET log_connections = 'on';\""
 
-# Add GSSAPI auth and ident map
+# Every testuser connection over TCP must authenticate with GSSAPI: no trust
+# line can match testuser first
 cat > "$PGDATA/pg_hba.conf" << HBA
 local   all             all                                     trust
-hostgssenc testdb       testuser        127.0.0.1/32            gss include_realm=0
-hostssl testdb          testuser        127.0.0.1/32            cert
+host    all             testuser        127.0.0.1/32            gss include_realm=0
+host    all             testuser        ::1/128                 gss include_realm=0
 host    all             all             127.0.0.1/32            trust
 host    all             all             ::1/128                 trust
 HBA
@@ -572,6 +579,10 @@ echo "testpass" | kinit testuser@$KRB_REALM 2>/dev/null
 ./radar -h localhost -d testdb -U testuser -sslmode disable -vv
 ZIP6=$(ls -t radar-*.zip | head -1)
 if ! validate_zip "$ZIP6" "Scenario 6" "yes"; then
+    exit 1
+fi
+if ! grep -qE 'connection authenticated: identity="testuser(@[^"]*)?" method=gss' "$PGDATA"/log/*; then
+    echo -e "${RED}✗ Scenario 6: the server log records no GSSAPI authentication for testuser${NC}"
     exit 1
 fi
 echo -e "${GREEN}✓ Scenario 6 PASSED${NC}"
