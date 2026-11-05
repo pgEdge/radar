@@ -28,6 +28,11 @@ this project adheres to
 - The documentation warns that an archive can contain passwords and other
   secrets, and asks you to review an archive before you share it.
 
+### Fixed
+
+- radar authenticates with GSSAPI (Kerberos), using the ticket in a file
+  credential cache.
+
 ## [0.6.2] - 2026-09-03
 
 ### Changed
