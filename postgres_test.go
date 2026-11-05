@@ -526,3 +526,33 @@ func TestCollectPGConfigFileUsesDataDirOptionWhenSettingUnreadable(t *testing.T)
 		t.Error(err)
 	}
 }
+
+// TestCollectPGConfigFileReportsOtherSettingErrors pins that only a refused
+// setting falls back to --data-dir: any other failure to read it is returned,
+// so a same-name file in the data directory never replaces the real one.
+func TestCollectPGConfigFileReportsOtherSettingErrors(t *testing.T) {
+	dataDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dataDir, "pg_hba.conf"), []byte("local all all trust\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create mock: %v", err)
+	}
+	mock.ExpectQuery("current_setting").WithArgs("hba_file").
+		WillReturnError(&pgconn.PgError{Code: "57014", Message: "canceling statement due to statement timeout"})
+
+	task := SimpleConfigFileTask{Name: "pg_hba.conf", ArchivePath: "postgresql/pg_hba.conf", Filename: "pg_hba.conf", Setting: "hba_file"}
+	var buf bytes.Buffer
+	err = collectPGConfigFile(db, &Config{DataDir: dataDir}, task, &buf)
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "57014" {
+		t.Fatalf("err = %v, want the setting's 57014 error", err)
+	}
+	if buf.Len() != 0 {
+		t.Errorf("wrote %q from the data directory, want nothing", buf.String())
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Error(err)
+	}
+}

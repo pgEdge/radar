@@ -119,7 +119,9 @@ func configFilePath(db *sql.DB, cfg *Config, task SimpleConfigFileTask) (string,
 		if err == nil {
 			return path, nil
 		}
-		if cfg.DataDir == "" {
+		// 42501 is insufficient_privilege: only a refused setting falls back.
+		var pgErr *pgconn.PgError
+		if cfg.DataDir == "" || !errors.As(err, &pgErr) || pgErr.Code != "42501" {
 			return "", fmt.Errorf("locating %s: %w", task.Filename, err)
 		}
 	}
