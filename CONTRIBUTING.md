@@ -54,7 +54,7 @@ radar from source, and how to work with platform-specific code.
 
 The development environment uses the following tools:
 
-- Go 1.25.12 or later is required; the `go` directive in `go.mod` sets this
+- Go 1.26.10 or later is required; the `go` directive in `go.mod` sets this
   minimum.
 - Git is required for version control.
 - golangci-lint v2.12.2 is used for linting; the `run-ci-local.sh` script
@@ -481,7 +481,7 @@ container, whereas GitHub CI runs each scenario in an isolated container.
 
 The script performs the following steps in order:
 
-1. The script pins the Go toolchain by setting `GOTOOLCHAIN=go1.25.12`, so that
+1. The script pins the Go toolchain by setting `GOTOOLCHAIN=go1.26.10`, so that
    the compiler, the standard library, and `gofmt` match CI regardless of the
    installed Go version.
 2. The script checks the code formatting with the `gofmt` of the pinned
@@ -532,7 +532,7 @@ scenario and the collection that the scenario expects:
 | S3 | Non-root and PostgreSQL superuser | radar has limited system access, because some commands fail without root, and full PostgreSQL access to all views and configuration files. Some system collectors are unavailable (for example, `ifconfig` and `sysctl`). | About 68 system collectors, about 51 PostgreSQL collectors, and pg_statviz data. |
 | S4 | Non-root and PostgreSQL pg_monitor role | radar runs as a non-root user with monitoring-level PostgreSQL access through the pg_monitor role. This scenario combines the limitations of both non-root and pg_monitor, and is the most restricted. | About 68 system collectors, about 47 PostgreSQL collectors, and pg_statviz data. |
 | S5 | Certificate authentication | radar runs as root and connects as the pg_monitor role with a client certificate over TLS. This scenario exercises `--sslmode verify-full` with `--sslcert`, `--sslkey` and `--sslrootcert`. | About 71 system collectors, about 51 PostgreSQL collectors, and pg_statviz data. |
-| S6 | GSSAPI/Kerberos authentication | radar runs as root and connects as the pg_monitor role with a Kerberos ticket from `kinit`. Because `pg_hba.conf` requires `hostgssenc`, the connection must be GSSAPI-encrypted. | About 71 system collectors, about 51 PostgreSQL collectors, and pg_statviz data. |
+| S6 | GSSAPI/Kerberos authentication | radar runs as root and connects as the pg_monitor role with a Kerberos ticket from `kinit`. `pg_hba.conf` requires GSSAPI authentication for every TCP connection by that role, and the scenario checks that the server log records `method=gss`. | About 71 system collectors, about 51 PostgreSQL collectors, and pg_statviz data. |
 
 All scenarios verify that radar collects the required data and handles the
 permission limitations of each scenario.
