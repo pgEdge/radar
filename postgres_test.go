@@ -435,3 +435,124 @@ func TestWriteDirListingTSVUnreadableIsSkip(t *testing.T) {
 		t.Errorf("wrote %d bytes for an unreadable directory, want 0", buf.Len())
 	}
 }
+
+// TestCollectPGConfigFileReadsServerReportedPath pins where the collector
+// looks: a file with a location setting is read from the path the server
+// reports, even when a data directory is given and holds no such file, as on
+// Debian and Ubuntu package clusters.
+func TestCollectPGConfigFileReadsServerReportedPath(t *testing.T) {
+	dataDir := t.TempDir()
+	etcDir := t.TempDir()
+	hba := filepath.Join(etcDir, "pg_hba.conf")
+	if err := os.WriteFile(hba, []byte("host all all 127.0.0.1/32 trust\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create mock: %v", err)
+	}
+	mock.ExpectQuery("current_setting").WithArgs("hba_file").
+		WillReturnRows(sqlmock.NewRows([]string{"current_setting"}).AddRow(hba))
+
+	task := SimpleConfigFileTask{Name: "pg_hba.conf", ArchivePath: "postgresql/pg_hba.conf", Filename: "pg_hba.conf", Setting: "hba_file"}
+	var buf bytes.Buffer
+	if err := collectPGConfigFile(db, &Config{DataDir: dataDir}, task, &buf); err != nil {
+		t.Fatalf("collect failed: %v", err)
+	}
+	if got := buf.String(); got != "host all all 127.0.0.1/32 trust\n" {
+		t.Errorf("unexpected content: %q", got)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Error(err)
+	}
+}
+
+// TestCollectPGConfigFileReadsDataDirectory pins that a file without a
+// location setting is read from the data directory the server reports, which
+// is then kept for the other data directory files.
+func TestCollectPGConfigFileReadsDataDirectory(t *testing.T) {
+	dataDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dataDir, "postgresql.auto.conf"), []byte("work_mem = '8MB'\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create mock: %v", err)
+	}
+	mock.ExpectQuery("current_setting").WithArgs("data_directory").
+		WillReturnRows(sqlmock.NewRows([]string{"current_setting"}).AddRow(dataDir))
+
+	task := SimpleConfigFileTask{Name: "postgresql.auto.conf", ArchivePath: "postgresql/postgresql.auto.conf", Filename: "postgresql.auto.conf"}
+	cfg := &Config{}
+	var buf bytes.Buffer
+	if err := collectPGConfigFile(db, cfg, task, &buf); err != nil {
+		t.Fatalf("collect failed: %v", err)
+	}
+	if got := buf.String(); got != "work_mem = '8MB'\n" {
+		t.Errorf("unexpected content: %q", got)
+	}
+	if cfg.DataDir != dataDir {
+		t.Errorf("DataDir = %q, want %q", cfg.DataDir, dataDir)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Error(err)
+	}
+}
+
+// TestCollectPGConfigFileUsesDataDirOptionWhenSettingUnreadable pins the path
+// for a role without pg_read_all_settings: the location settings are refused,
+// so --data-dir names where the file is read from.
+func TestCollectPGConfigFileUsesDataDirOptionWhenSettingUnreadable(t *testing.T) {
+	dataDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dataDir, "pg_hba.conf"), []byte("local all all trust\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create mock: %v", err)
+	}
+	mock.ExpectQuery("current_setting").WithArgs("hba_file").
+		WillReturnError(&pgconn.PgError{Code: "42501", Message: "permission denied to examine \"hba_file\""})
+
+	task := SimpleConfigFileTask{Name: "pg_hba.conf", ArchivePath: "postgresql/pg_hba.conf", Filename: "pg_hba.conf", Setting: "hba_file"}
+	var buf bytes.Buffer
+	if err := collectPGConfigFile(db, &Config{DataDir: dataDir}, task, &buf); err != nil {
+		t.Fatalf("collect failed: %v", err)
+	}
+	if got := buf.String(); got != "local all all trust\n" {
+		t.Errorf("unexpected content: %q", got)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Error(err)
+	}
+}
+
+// TestCollectPGConfigFileReportsOtherSettingErrors pins that only a refused
+// setting falls back to --data-dir: any other failure to read it is returned,
+// so a same-name file in the data directory never replaces the real one.
+func TestCollectPGConfigFileReportsOtherSettingErrors(t *testing.T) {
+	dataDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dataDir, "pg_hba.conf"), []byte("local all all trust\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create mock: %v", err)
+	}
+	mock.ExpectQuery("current_setting").WithArgs("hba_file").
+		WillReturnError(&pgconn.PgError{Code: "57014", Message: "canceling statement due to statement timeout"})
+
+	task := SimpleConfigFileTask{Name: "pg_hba.conf", ArchivePath: "postgresql/pg_hba.conf", Filename: "pg_hba.conf", Setting: "hba_file"}
+	var buf bytes.Buffer
+	err = collectPGConfigFile(db, &Config{DataDir: dataDir}, task, &buf)
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "57014" {
+		t.Fatalf("err = %v, want the setting's 57014 error", err)
+	}
+	if buf.Len() != 0 {
+		t.Errorf("wrote %q from the data directory, want nothing", buf.String())
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Error(err)
+	}
+}

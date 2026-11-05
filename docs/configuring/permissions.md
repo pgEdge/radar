@@ -42,8 +42,8 @@ PGPASSWORD='secure_password' radar -d mydatabase -U radaruser
 The `pg_monitor` role can read nearly every source that radar queries. A few
 replication catalog views and `pg_hba_file_rules` remain unreadable, and radar
 reports a permission denial for each affected collector. The run still
-completes and writes an archive, and radar still reads `pg_hba.conf` from the
-data directory.
+completes and writes an archive, and radar still reads the `pg_hba.conf` file
+from the path that the `hba_file` setting names.
 
 ## Running with Limited Permissions
 

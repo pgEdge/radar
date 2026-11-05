@@ -29,12 +29,26 @@ chown -R postgres:postgres /var/lib/postgresql
 su - postgres -c "/usr/lib/postgresql/18/bin/initdb -D /var/lib/postgresql/18/main"
 
 echo ""
+echo "Moving the configuration files under /etc/postgresql, as the Debian packages do..."
+PGCONF=/etc/postgresql/18/main
+mkdir -p "$PGCONF"
+mv /var/lib/postgresql/18/main/{postgresql.conf,pg_hba.conf,pg_ident.conf} "$PGCONF/"
+chown -R postgres:postgres /etc/postgresql
+chmod 644 "$PGCONF/postgresql.conf"
+chmod 640 "$PGCONF/pg_hba.conf" "$PGCONF/pg_ident.conf"
+su - postgres -c "cat >> $PGCONF/postgresql.conf << CONF
+data_directory = '/var/lib/postgresql/18/main'
+hba_file = '$PGCONF/pg_hba.conf'
+ident_file = '$PGCONF/pg_ident.conf'
+CONF"
+
+echo ""
 echo "Enabling the logging collector, so log_directory exists to be listed..."
-su - postgres -c "echo 'logging_collector = on' >> /var/lib/postgresql/18/main/postgresql.conf"
+su - postgres -c "echo 'logging_collector = on' >> $PGCONF/postgresql.conf"
 
 echo ""
 echo "Starting PostgreSQL 18..."
-su - postgres -c "/usr/lib/postgresql/18/bin/pg_ctl -D /var/lib/postgresql/18/main -l /var/lib/postgresql/18/logfile start"
+su - postgres -c "/usr/lib/postgresql/18/bin/pg_ctl -D /var/lib/postgresql/18/main -o '-c config_file=$PGCONF/postgresql.conf' -l /var/lib/postgresql/18/logfile start"
 
 echo ""
 echo "Waiting for PostgreSQL to start..."
@@ -298,6 +312,20 @@ validate_zip() {
 		return 1
 	fi
 
+	# The configuration files live under /etc/postgresql, not in the data
+	# directory. postgresql.conf is world-readable; pg_hba.conf and
+	# pg_ident.conf are readable by root and postgres only.
+	local required="postgresql.conf"
+	if [ "$require_system" = "yes" ]; then
+		required="postgresql.conf pg_hba.conf pg_ident.conf"
+	fi
+	for f in $required; do
+		if ! unzip -l "$zip_file" | grep -q " postgresql/$f\$"; then
+			echo -e "${RED}✗ $scenario FAILED: postgresql/$f missing from archive${NC}"
+			return 1
+		fi
+	done
+
 	# Must have PostgreSQL data
 	if [ "$pg_count" -eq 0 ]; then
 		echo -e "${RED}✗ $scenario FAILED: No PostgreSQL data collected${NC}"
@@ -425,7 +453,7 @@ chmod 600 "$PGDATA/server.key"
 chmod 600 "$CERTDIR/client.key"
 
 # Configure PostgreSQL for SSL + cert auth
-su - postgres -c "cat >> $PGDATA/postgresql.conf << 'SSLCONF'
+su - postgres -c "cat >> $PGCONF/postgresql.conf << 'SSLCONF'
 ssl = on
 ssl_cert_file = 'server.crt'
 ssl_key_file = 'server.key'
@@ -433,7 +461,7 @@ ssl_ca_file = 'ca.crt'
 SSLCONF"
 
 # Replace pg_hba.conf: cert auth for testuser, trust for postgres (scenarios 1-4 already passed)
-su - postgres -c "cat > $PGDATA/pg_hba.conf << 'HBA'
+su - postgres -c "cat > $PGCONF/pg_hba.conf << 'HBA'
 local   all             all                                     trust
 hostssl testdb          testuser        127.0.0.1/32            cert
 host    all             all             127.0.0.1/32            trust
@@ -512,6 +540,7 @@ krb5kdc
 su - postgres -c "/usr/lib/postgresql/18/bin/psql -c \"ALTER SYSTEM SET krb_server_keyfile = '$PGDATA/server.keytab';\""
 su - postgres -c "/usr/lib/postgresql/18/bin/psql -c \"ALTER SYSTEM SET log_connections = 'on';\""
 
+# Add GSSAPI auth and ident map
 # Every testuser connection over TCP must authenticate with GSSAPI: no trust
 # line can match testuser first
 cat > "$PGDATA/pg_hba.conf" << HBA

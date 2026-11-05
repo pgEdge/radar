@@ -55,11 +55,13 @@ var postgresConfigFileTasks = []SimpleConfigFileTask{
 		Name:        "pg_hba.conf",
 		ArchivePath: "postgresql/pg_hba.conf",
 		Filename:    "pg_hba.conf",
+		Setting:     "hba_file",
 	},
 	{
 		Name:        "pg_ident.conf",
 		ArchivePath: "postgresql/pg_ident.conf",
 		Filename:    "pg_ident.conf",
+		Setting:     "ident_file",
 	},
 	{
 		Name:        "postgresql.auto.conf",
@@ -70,6 +72,7 @@ var postgresConfigFileTasks = []SimpleConfigFileTask{
 		Name:        "postgresql.conf",
 		ArchivePath: "postgresql/postgresql.conf",
 		Filename:    "postgresql.conf",
+		Setting:     "config_file",
 	},
 	{
 		Name:        "recovery.conf",
@@ -94,29 +97,47 @@ func getPostgreSQLTasks(db *sql.DB) []CollectionTask {
 	return tasks
 }
 
-// collectPGConfigFile reads a PostgreSQL config file
-func collectPGConfigFile(db *sql.DB, cfg *Config, filename string, w io.Writer) error {
+// collectPGConfigFile reads a PostgreSQL config file from the path the server
+// reports, since Debian and Ubuntu packages keep postgresql.conf, pg_hba.conf
+// and pg_ident.conf under /etc/postgresql rather than in the data directory.
+func collectPGConfigFile(db *sql.DB, cfg *Config, task SimpleConfigFileTask, w io.Writer) error {
 	if db == nil {
 		return fmt.Errorf("PostgreSQL not initialized")
 	}
-
-	// Auto-detect data directory if not provided
-	if cfg.DataDir == "" {
-		var dataDir string
-		err := db.QueryRow("SHOW data_directory").Scan(&dataDir)
-		if err != nil {
-			return fmt.Errorf("detecting data directory: %w", err)
-		}
-		cfg.DataDir = dataDir
+	path, err := configFilePath(db, cfg, task)
+	if err != nil {
+		return err
 	}
-
-	path := filepath.Join(cfg.DataDir, filename)
 	data, err := readFile(path)
 	if err != nil {
 		return err
 	}
 	_, err = w.Write(data)
 	return err
+}
+
+// configFilePath resolves the file through its location setting, or under the
+// data directory. The location settings need pg_read_all_settings; a role
+// without it supplies --data-dir, which then stands in for the setting.
+func configFilePath(db *sql.DB, cfg *Config, task SimpleConfigFileTask) (string, error) {
+	if task.Setting != "" {
+		var path string
+		err := db.QueryRow("SELECT current_setting($1)", task.Setting).Scan(&path)
+		if err == nil {
+			return path, nil
+		}
+		// 42501 is insufficient_privilege: only a refused setting falls back.
+		var pgErr *pgconn.PgError
+		if cfg.DataDir == "" || !errors.As(err, &pgErr) || pgErr.Code != "42501" {
+			return "", fmt.Errorf("locating %s: %w", task.Filename, err)
+		}
+	}
+	if cfg.DataDir == "" {
+		if err := db.QueryRow("SELECT current_setting($1)", "data_directory").Scan(&cfg.DataDir); err != nil {
+			return "", fmt.Errorf("detecting data directory: %w", err)
+		}
+	}
+	return filepath.Join(cfg.DataDir, task.Filename), nil
 }
 
 // generateDatabaseTasks creates per-database collection tasks, returning the

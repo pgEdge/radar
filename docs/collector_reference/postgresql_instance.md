@@ -29,11 +29,11 @@ these collectors produce:
 | `postgresql/db_role_setting.tsv` | `pg_db_role_setting` | Lists the per-database and per-role settings. |
 | `postgresql/file_settings.tsv` | `pg_file_settings` | Reports the configuration file parse results and errors. |
 | `postgresql/log_directory.tsv` | `pg_ls_logdir()` | Lists the server log directory with the name, size and modification time of each file. The listing includes file names only and never log contents. The listing is readable by `pg_monitor` and needs no filesystem access, so the collector works when radar runs as an OS user other than `postgres`. The file contains only a header, with no rows, when `logging_collector` is off. |
-| `postgresql/pg_hba.conf` | Data directory | Contains the host-based authentication configuration. |
+| `postgresql/pg_hba.conf` | `hba_file` setting | Contains the host-based authentication configuration. |
 | `postgresql/pg_hba_file_rules.tsv` | `pg_hba_file_rules` | Lists the parsed `pg_hba.conf` rules (PostgreSQL 10 and later). |
-| `postgresql/pg_ident.conf` | Data directory | Contains the user name mapping configuration. |
+| `postgresql/pg_ident.conf` | `ident_file` setting | Contains the user name mapping configuration. |
 | `postgresql/postgresql.auto.conf` | Data directory | Contains the auto-generated configuration. |
-| `postgresql/postgresql.conf` | Data directory | Contains the main configuration file. |
+| `postgresql/postgresql.conf` | `config_file` setting | Contains the main configuration file. |
 | `postgresql/postmaster_start_time.tsv` | `pg_postmaster_start_time()` | Reports the time at which the server started. |
 | `postgresql/prepared_xacts.tsv` | `pg_prepared_xacts` | Lists the prepared transactions. |
 | `postgresql/recovery.conf` | Data directory | Contains the recovery configuration (PostgreSQL 11 and earlier). |
