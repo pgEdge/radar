@@ -329,10 +329,12 @@ func TestDBConnsAttemptsAnUnreachableDatabaseOnce(t *testing.T) {
 	}
 }
 
-// TestGenerateDatabaseTasksSkipsDatabaseWithoutConnect pins that a database
-// this role has no CONNECT privilege on keeps its tasks, each a SkipError, and
-// is never connected to, so no refused login reaches the server log.
-func TestGenerateDatabaseTasksSkipsDatabaseWithoutConnect(t *testing.T) {
+// TestGenerateDatabaseTasksReportsDatabaseWithoutConnectOnce pins that radar
+// never connects to a database this role has no CONNECT privilege on, so no
+// refused login reaches the server log, and that the first task of that
+// database returns the missing privilege as an error and the rest skip, so the
+// run reports the database once.
+func TestGenerateDatabaseTasksReportsDatabaseWithoutConnectOnce(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
@@ -364,15 +366,19 @@ func TestGenerateDatabaseTasksSkipsDatabaseWithoutConnect(t *testing.T) {
 		t.Fatalf("generateDatabaseTasks: %v", err)
 	}
 	defer closeErrCheck(conns, "database connection")
-	if len(tasks) == 0 {
-		t.Fatal("no tasks for noconnect, want them kept as a trace")
+	if len(tasks) < 2 {
+		t.Fatalf("got %d tasks for noconnect, want them all kept", len(tasks))
 	}
 
 	cfg := &Config{Host: "127.0.0.1", Port: listener.Addr().(*net.TCPAddr).Port,
 		Database: "postgres", Username: "radar", SSLMode: "disable"}
 	var buf bytes.Buffer
-	for _, task := range tasks {
-		var skipErr SkipError
+	var skipErr SkipError
+	want := "no CONNECT privilege on database noconnect"
+	if err := tasks[0].Collector(cfg, &buf); err == nil || errors.As(err, &skipErr) || err.Error() != want {
+		t.Errorf("%s = %v, want the error %q", tasks[0].Name, err, want)
+	}
+	for _, task := range tasks[1:] {
 		if err := task.Collector(cfg, &buf); !errors.As(err, &skipErr) {
 			t.Errorf("%s = %v, want SkipError", task.Name, err)
 		}

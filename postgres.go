@@ -134,9 +134,9 @@ func generateDatabaseTasks(db *sql.DB) ([]CollectionTask, io.Closer, error) {
 	defer closeErrCheck(rows, "database list query rows")
 
 	var databases []string
-	// A database this role may not connect to keeps its tasks, as skips, so the
-	// run still records it, but is never connected to, because each refused
-	// login would log a FATAL on the server.
+	// A database this role may not connect to keeps its tasks, so the run
+	// reports it, but dbConns never connects to it, because each refused login
+	// would log a FATAL on the server.
 	noConnect := map[string]bool{}
 	for rows.Next() {
 		var dbname string
@@ -158,7 +158,7 @@ func generateDatabaseTasks(db *sql.DB) ([]CollectionTask, io.Closer, error) {
 
 	// Generate tasks for each database
 	var tasks []CollectionTask
-	conns := &dbConns{}
+	conns := &dbConns{noConnect: noConnect}
 	allDBTasks := make([]SimpleQueryTask, 0,
 		len(perDatabaseQueryTasks)+len(pgStatvizQueryTasks)+len(spockQueryTasks))
 	allDBTasks = append(allDBTasks, perDatabaseQueryTasks...)
@@ -178,9 +178,6 @@ func generateDatabaseTasks(db *sql.DB) ([]CollectionTask, io.Closer, error) {
 				Name:        fmt.Sprintf("%s/%s", dbName, td.Name),
 				ArchivePath: fmt.Sprintf(td.ArchivePath, dbName),
 				Collector: func(cfg *Config, w io.Writer) error {
-					if noConnect[dbName] {
-						return NewSkipError("no CONNECT privilege on database " + dbName)
-					}
 					return conns.exec(cfg, dbName, td.Relation, td.Query, w)
 				},
 			})
@@ -195,15 +192,18 @@ func generateDatabaseTasks(db *sql.DB) ([]CollectionTask, io.Closer, error) {
 // collection moves on costs one connect and one authentication per database
 // rather than one per task.
 type dbConns struct {
-	db   *sql.DB
-	name string
-	err  error // why name could not be reached, if it could not
+	db        *sql.DB
+	name      string
+	err       error           // why name could not be reached, if it could not
+	noConnect map[string]bool // databases this role has no CONNECT privilege on
 }
 
 // conn returns the connection for dbname, establishing one on first use and
 // closing the connection to the database collection has left behind. A database
-// that cannot be reached is recorded, so its remaining tasks skip. The database
-// radar was invoked against is served by the connection opened at startup.
+// that cannot be reached is recorded, so its first task returns the reason and
+// its remaining tasks skip. A database this role has no CONNECT privilege on is
+// recorded the same way without connecting. The database radar was invoked
+// against is served by the connection opened at startup.
 func (c *dbConns) conn(cfg *Config, dbname string) (*sql.DB, error) {
 	if dbname == c.name {
 		if c.err != nil {
@@ -216,6 +216,12 @@ func (c *dbConns) conn(cfg *Config, dbname string) (*sql.DB, error) {
 
 	if dbname == cfg.Database && cfg.DB != nil {
 		return cfg.DB, nil
+	}
+
+	if c.noConnect[dbname] {
+		c.name = dbname
+		c.err = fmt.Errorf("no CONNECT privilege on database %s", dbname)
+		return nil, c.err
 	}
 
 	db, err := sql.Open("pgx", cfg.ConnectionString(dbname))

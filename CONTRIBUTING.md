@@ -298,10 +298,10 @@ instance-level query collector:
 },
 ```
 
-radar runs each per-database query in every database that allows connections,
-except `template0` and `template1`, and connects to each database in turn. The
-`ArchivePath` of a per-database entry contains a `%s` placeholder, which radar
-replaces with the database name. The following entry from
+radar runs each per-database query in every database that the role may connect
+to, except `template0` and `template1`, and connects to each database in turn.
+The `ArchivePath` of a per-database entry contains a `%s` placeholder, which
+radar replaces with the database name. The following entry from
 `perDatabaseQueryTasks` defines a per-database query collector:
 
 ```go

@@ -401,8 +401,8 @@ ZIP2=$(ls -t radar-*.zip | head -1)
 if ! validate_zip "$ZIP2" "Scenario 2" "yes"; then
 	exit 1
 fi
-if ! echo "$OUT2" | grep -qE '^⊘ noconnect/[^ ]+ \(unavailable\)$'; then
-	echo -e "${RED}✗ Scenario 2 FAILED: radar did not report the noconnect collectors as unavailable${NC}"
+if [ "$(echo "$OUT2" | grep -cE '^ERROR: ✗ noconnect/[^:]+: no CONNECT privilege on database noconnect$')" -ne 1 ]; then
+	echo -e "${RED}✗ Scenario 2 FAILED: radar did not report the missing CONNECT privilege on noconnect exactly once${NC}"
 	exit 1
 fi
 echo -e "${GREEN}✓ Scenario 2 PASSED${NC}"
