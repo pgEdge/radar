@@ -31,6 +31,8 @@ The following table describes the environment variables that radar reads:
 | `PGSSLCERT` | Specifies the client SSL certificate file. |
 | `PGSSLKEY` | Specifies the client SSL private key file. |
 | `PGSSLROOTCERT` | Specifies the SSL root (CA) certificate file. |
+| `KRB5CCNAME` | Names the Kerberos credential cache for GSSAPI authentication; radar reads only a `FILE:` cache, and the default is `/tmp/krb5cc_<uid>`. |
+| `KRB5_CONFIG` | Names the Kerberos configuration file; the default is `/etc/krb5.conf`. |
 
 The pgx driver also applies some other libpq environment variables, such as
 `PGAPPNAME` and `PGCONNECT_TIMEOUT`. pgx does not support `PGSSLCRL` or
