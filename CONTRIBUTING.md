@@ -54,7 +54,7 @@ radar from source, and how to work with platform-specific code.
 
 The development environment uses the following tools:
 
-- Go 1.25.12 or later is required; the `go` directive in `go.mod` sets this
+- Go 1.26.10 or later is required; the `go` directive in `go.mod` sets this
   minimum.
 - Git is required for version control.
 - golangci-lint v2.12.2 is used for linting; the `run-ci-local.sh` script
@@ -476,7 +476,7 @@ container, whereas GitHub CI runs each scenario in an isolated container.
 
 The script performs the following steps in order:
 
-1. The script pins the Go toolchain by setting `GOTOOLCHAIN=go1.25.12`, so that
+1. The script pins the Go toolchain by setting `GOTOOLCHAIN=go1.26.10`, so that
    the compiler, the standard library, and `gofmt` match CI regardless of the
    installed Go version.
 2. The script checks the code formatting with the `gofmt` of the pinned

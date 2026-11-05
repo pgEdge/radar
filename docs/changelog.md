@@ -20,7 +20,7 @@ this project adheres to
 ### Changed
 
 - The build instructions clone the pgEdge radar repository and require Go
-  1.25.12 or later.
+  1.26.10 or later.
 - The published data reference covers the control file, log directory,
   subscription statistics, freeze age, Spock, and PgBouncer collectors.
 - The documentation names the minimum PostgreSQL version of each collector that
