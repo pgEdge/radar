@@ -7,26 +7,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and
 this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.7.0] - 2026-11-05
+## [0.6.3] - 2026-11-06
 
-### Added
+### Removed
 
-- The documentation describes installing radar from the pgEdge Enterprise
-  Postgres repository and from the pre-built binaries on GitHub, with checksum
-  verification.
-- The documentation describes the `--exclude` and `--include` options, and how
-  to find collector names with `-vv`.
+- This release no longer provides packages for Debian 11 (bullseye), which is
+  end-of-life.
 
-### Changed
+### Security
 
-- The build instructions clone the pgEdge radar repository and require Go
-  1.26.10 or later.
-- The published data reference covers the control file, log directory,
-  subscription statistics, freeze age, Spock, and PgBouncer collectors.
-- The documentation names the minimum PostgreSQL version of each collector that
-  needs one, and describes the archive layout and the summary line in detail.
-- The documentation warns that an archive can contain passwords and other
-  secrets, and asks you to review an archive before you share it.
+- This release updates the Go toolchain to 1.26.10, which fixes vulnerabilities
+  in `crypto/tls`, `crypto/x509`, `encoding/asn1`, `encoding/xml`,
+  `html/template`, `net/http`, `net/http/httputil`, `net/textproto`, and
+  `net/url`.
+- This release updates `golang.org/x/text` to v0.43.0, which fixes a panic when
+  parsing crafted input in `golang.org/x/text/secure/precis`.
 
 ### Fixed
 
@@ -36,7 +31,7 @@ this project adheres to
   them under `/etc/postgresql`.
 - radar authenticates with GSSAPI (Kerberos), using the ticket in a file
   credential cache.
-- radar skips a database on which the role lacks the `CONNECT` privilege
+- radar reports a database on which the role lacks the `CONNECT` privilege
   without connecting to it, so the server log records no refused connection.
 - radar checks that each pg_stat_statements, pg_statviz, and Spock relation
   exists before querying the relation, so a missing extension or an older
