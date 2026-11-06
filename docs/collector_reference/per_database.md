@@ -1,8 +1,10 @@
 # Collecting Per-Database Data
 
 radar runs the per-database collectors for each accessible database and stores
-their files in `databases/{dbname}/`. The following table describes the files
-that these collectors produce for each database:
+their files in `databases/{dbname}/`. radar does not connect to a database on
+which the role lacks the `CONNECT` privilege. For that database, radar reports
+one error that names the missing privilege. The following table describes the
+files that these collectors produce for each database:
 
 | File | Source | Description |
 |------|--------|-------------|

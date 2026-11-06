@@ -36,6 +36,11 @@ this project adheres to
   them under `/etc/postgresql`.
 - radar authenticates with GSSAPI (Kerberos), using the ticket in a file
   credential cache.
+- radar skips a database on which the role lacks the `CONNECT` privilege
+  without connecting to it, so the server log records no refused connection.
+- radar checks that each pg_stat_statements, pg_statviz, and Spock relation
+  exists before querying the relation, so a missing extension or an older
+  pg_statviz version leaves no error in the server log.
 
 ## [0.6.2] - 2026-09-03
 

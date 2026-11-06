@@ -148,16 +148,21 @@ func generateDatabaseTasks(db *sql.DB) ([]CollectionTask, io.Closer, error) {
 	}
 
 	// Get list of databases
-	rows, err := db.Query("SELECT datname FROM pg_database WHERE datallowconn ORDER BY datname")
+	rows, err := db.Query("SELECT datname, has_database_privilege(oid, 'CONNECT') FROM pg_database WHERE datallowconn ORDER BY datname")
 	if err != nil {
 		return nil, nil, fmt.Errorf("querying databases: %w", err)
 	}
 	defer closeErrCheck(rows, "database list query rows")
 
 	var databases []string
+	// A database this role may not connect to keeps its tasks, so the run
+	// reports it, but dbConns never connects to it, because each refused login
+	// would log a FATAL on the server.
+	noConnect := map[string]bool{}
 	for rows.Next() {
 		var dbname string
-		if err := rows.Scan(&dbname); err != nil {
+		var canConnect bool
+		if err := rows.Scan(&dbname, &canConnect); err != nil {
 			return nil, nil, fmt.Errorf("scanning database name: %w", err)
 		}
 		// Always skip template0 and template1
@@ -165,6 +170,7 @@ func generateDatabaseTasks(db *sql.DB) ([]CollectionTask, io.Closer, error) {
 			continue
 		}
 		databases = append(databases, dbname)
+		noConnect[dbname] = !canConnect
 	}
 
 	if err := rows.Err(); err != nil {
@@ -173,7 +179,7 @@ func generateDatabaseTasks(db *sql.DB) ([]CollectionTask, io.Closer, error) {
 
 	// Generate tasks for each database
 	var tasks []CollectionTask
-	conns := &dbConns{}
+	conns := &dbConns{noConnect: noConnect}
 	allDBTasks := make([]SimpleQueryTask, 0,
 		len(perDatabaseQueryTasks)+len(pgStatvizQueryTasks)+len(spockQueryTasks))
 	allDBTasks = append(allDBTasks, perDatabaseQueryTasks...)
@@ -193,7 +199,7 @@ func generateDatabaseTasks(db *sql.DB) ([]CollectionTask, io.Closer, error) {
 				Name:        fmt.Sprintf("%s/%s", dbName, td.Name),
 				ArchivePath: fmt.Sprintf(td.ArchivePath, dbName),
 				Collector: func(cfg *Config, w io.Writer) error {
-					return conns.exec(cfg, dbName, td.Query, w)
+					return conns.exec(cfg, dbName, td.Relation, td.Query, w)
 				},
 			})
 		}
@@ -207,15 +213,18 @@ func generateDatabaseTasks(db *sql.DB) ([]CollectionTask, io.Closer, error) {
 // collection moves on costs one connect and one authentication per database
 // rather than one per task.
 type dbConns struct {
-	db   *sql.DB
-	name string
-	err  error // why name could not be reached, if it could not
+	db        *sql.DB
+	name      string
+	err       error           // why name could not be reached, if it could not
+	noConnect map[string]bool // databases this role has no CONNECT privilege on
 }
 
 // conn returns the connection for dbname, establishing one on first use and
 // closing the connection to the database collection has left behind. A database
-// that cannot be reached is recorded, so its remaining tasks skip. The database
-// radar was invoked against is served by the connection opened at startup.
+// that cannot be reached is recorded, so its first task returns the reason and
+// its remaining tasks skip. A database this role has no CONNECT privilege on is
+// recorded the same way without connecting. The database radar was invoked
+// against is served by the connection opened at startup.
 func (c *dbConns) conn(cfg *Config, dbname string) (*sql.DB, error) {
 	if dbname == c.name {
 		if c.err != nil {
@@ -228,6 +237,12 @@ func (c *dbConns) conn(cfg *Config, dbname string) (*sql.DB, error) {
 
 	if dbname == cfg.Database && cfg.DB != nil {
 		return cfg.DB, nil
+	}
+
+	if c.noConnect[dbname] {
+		c.name = dbname
+		c.err = fmt.Errorf("no CONNECT privilege on database %s", dbname)
+		return nil, c.err
 	}
 
 	db, err := sql.Open("pgx", cfg.ConnectionString(dbname))
@@ -266,9 +281,12 @@ func (c *dbConns) Close() error {
 }
 
 // exec executes a query on a specific database
-func (c *dbConns) exec(cfg *Config, dbname, query string, w io.Writer) error {
+func (c *dbConns) exec(cfg *Config, dbname, relation, query string, w io.Writer) error {
 	db, err := c.conn(cfg, dbname)
 	if err != nil {
+		return err
+	}
+	if err := skipIfRelationMissing(db, relation); err != nil {
 		return err
 	}
 
@@ -282,6 +300,24 @@ func (c *dbConns) exec(cfg *Config, dbname, query string, w io.Writer) error {
 	defer closeErrCheck(rows, "query rows")
 
 	return rowsToTSV(rows, w)
+}
+
+// skipIfRelationMissing returns a SkipError when relation is set and does not
+// exist in db. to_regclass returns NULL for a missing relation or schema
+// instead of raising an error, so the check itself logs nothing on the server.
+func skipIfRelationMissing(db *sql.DB, relation string) error {
+	if relation == "" {
+		return nil
+	}
+	var exists bool
+	err := db.QueryRow("SELECT to_regclass($1) IS NOT NULL", relation).Scan(&exists)
+	if err != nil {
+		return fmt.Errorf("looking up %s: %w", relation, err)
+	}
+	if !exists {
+		return NewSkipError("relation not found: " + relation)
+	}
+	return nil
 }
 
 // printSummary logs the archive filename, size, and collector count.

@@ -784,10 +784,13 @@ func readFileCollector(path string) func(*Config, io.Writer) error {
 }
 
 // pgQueryCollector creates a collector that executes a PostgreSQL query and streams results as TSV
-func pgQueryCollector(db *sql.DB, query string) func(*Config, io.Writer) error {
+func pgQueryCollector(db *sql.DB, relation, query string) func(*Config, io.Writer) error {
 	return func(cfg *Config, w io.Writer) error {
 		if db == nil {
 			return fmt.Errorf("PostgreSQL not initialized")
+		}
+		if err := skipIfRelationMissing(db, relation); err != nil {
+			return err
 		}
 		rows, err := db.Query(query)
 		if err != nil {
