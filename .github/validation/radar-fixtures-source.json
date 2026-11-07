@@ -1,0 +1,430 @@
+{
+  "cells": {
+    "pepcell.v1.deb.bookworm.amd64.packaging": [
+      {
+        "arch": "amd64",
+        "file": "pgedge-radar_0.6.3-1.bookworm_amd64.deb",
+        "name": "pgedge-radar",
+        "sha256": "2670bbd6630f90be66e310d25b279e5dece1ff30abed7291efbf7975a0d6bb6c",
+        "size": 3877474,
+        "url": "https://apt.pgedge.com/staging/bookworm/pool/main/p/pgedge-radar/pgedge-radar_0.6.3-1.bookworm_amd64.deb",
+        "version": "0.6.3-1.bookworm"
+      }
+    ],
+    "pepcell.v1.deb.bookworm.arm64.packaging": [
+      {
+        "arch": "arm64",
+        "file": "pgedge-radar_0.6.3-1.bookworm_arm64.deb",
+        "name": "pgedge-radar",
+        "sha256": "152b7a572f11e70aee6d3a3a95c7eab29dfc0af6fa539fbb3e35d5f139bd34aa",
+        "size": 3493476,
+        "url": "https://apt.pgedge.com/staging/bookworm/pool/main/p/pgedge-radar/pgedge-radar_0.6.3-1.bookworm_arm64.deb",
+        "version": "0.6.3-1.bookworm"
+      }
+    ],
+    "pepcell.v1.deb.jammy.amd64.packaging": [
+      {
+        "arch": "amd64",
+        "file": "pgedge-radar_0.6.3-1.jammy_amd64.deb",
+        "name": "pgedge-radar",
+        "sha256": "5db12f1cbd7a78f03713073bffd5792650e695ced813a83761214eb28621b57e",
+        "size": 3877498,
+        "url": "https://apt.pgedge.com/staging/jammy/pool/main/p/pgedge-radar/pgedge-radar_0.6.3-1.jammy_amd64.deb",
+        "version": "0.6.3-1.jammy"
+      }
+    ],
+    "pepcell.v1.deb.jammy.arm64.packaging": [
+      {
+        "arch": "arm64",
+        "file": "pgedge-radar_0.6.3-1.jammy_arm64.deb",
+        "name": "pgedge-radar",
+        "sha256": "00279a5963533241a4b5a9f766300e7360da0fa208144db10065289613b33814",
+        "size": 3493470,
+        "url": "https://apt.pgedge.com/staging/jammy/pool/main/p/pgedge-radar/pgedge-radar_0.6.3-1.jammy_arm64.deb",
+        "version": "0.6.3-1.jammy"
+      }
+    ],
+    "pepcell.v1.deb.noble.amd64.packaging": [
+      {
+        "arch": "amd64",
+        "file": "pgedge-radar_0.6.3-1.noble_amd64.deb",
+        "name": "pgedge-radar",
+        "sha256": "ea3a1bfe22cf8179b049ad7b135212f681d5eb9528ce7e0a4a990d2d5aa86dfa",
+        "size": 3877460,
+        "url": "https://apt.pgedge.com/staging/noble/pool/main/p/pgedge-radar/pgedge-radar_0.6.3-1.noble_amd64.deb",
+        "version": "0.6.3-1.noble"
+      }
+    ],
+    "pepcell.v1.deb.noble.arm64.packaging": [
+      {
+        "arch": "arm64",
+        "file": "pgedge-radar_0.6.3-1.noble_arm64.deb",
+        "name": "pgedge-radar",
+        "sha256": "08377ca7c46872ca61a908caf9bf3230bd5a854c88aa29033bcfaf01a34a67e2",
+        "size": 3493470,
+        "url": "https://apt.pgedge.com/staging/noble/pool/main/p/pgedge-radar/pgedge-radar_0.6.3-1.noble_arm64.deb",
+        "version": "0.6.3-1.noble"
+      }
+    ],
+    "pepcell.v1.deb.resolute.amd64.packaging": [
+      {
+        "arch": "amd64",
+        "file": "pgedge-radar_0.6.3-1.resolute_amd64.deb",
+        "name": "pgedge-radar",
+        "sha256": "5610a069d26c236ef319f21400f001146033d3ce11403c59bf71ba58931378e6",
+        "size": 3877494,
+        "url": "https://apt.pgedge.com/staging/resolute/pool/main/p/pgedge-radar/pgedge-radar_0.6.3-1.resolute_amd64.deb",
+        "version": "0.6.3-1.resolute"
+      }
+    ],
+    "pepcell.v1.deb.resolute.arm64.packaging": [
+      {
+        "arch": "arm64",
+        "file": "pgedge-radar_0.6.3-1.resolute_arm64.deb",
+        "name": "pgedge-radar",
+        "sha256": "25b977d08a06685810cf7129762e3b334883f46760e783b034ba4660d4394732",
+        "size": 3493476,
+        "url": "https://apt.pgedge.com/staging/resolute/pool/main/p/pgedge-radar/pgedge-radar_0.6.3-1.resolute_arm64.deb",
+        "version": "0.6.3-1.resolute"
+      }
+    ],
+    "pepcell.v1.deb.trixie.amd64.packaging": [
+      {
+        "arch": "amd64",
+        "file": "pgedge-radar_0.6.3-1.trixie_amd64.deb",
+        "name": "pgedge-radar",
+        "sha256": "845aa0b55fc1d068eeee549295ce3a711a64b0911d5d4619b8c2fe2402d3c336",
+        "size": 3877470,
+        "url": "https://apt.pgedge.com/staging/trixie/pool/main/p/pgedge-radar/pgedge-radar_0.6.3-1.trixie_amd64.deb",
+        "version": "0.6.3-1.trixie"
+      }
+    ],
+    "pepcell.v1.deb.trixie.arm64.packaging": [
+      {
+        "arch": "arm64",
+        "file": "pgedge-radar_0.6.3-1.trixie_arm64.deb",
+        "name": "pgedge-radar",
+        "sha256": "60f54ebd36af17a3226e43bf0ff1566935a462aeed3eb616ce98ca900f6f127c",
+        "size": 3493468,
+        "url": "https://apt.pgedge.com/staging/trixie/pool/main/p/pgedge-radar/pgedge-radar_0.6.3-1.trixie_arm64.deb",
+        "version": "0.6.3-1.trixie"
+      }
+    ],
+    "pepcell.v1.rpm.el-10.amd64.packaging": [
+      {
+        "arch": "x86_64",
+        "file": "pgedge-radar-0.6.3-1.el10.x86_64.rpm",
+        "name": "pgedge-radar",
+        "sha256": "8c46e234f6339c39190a9b3cda447aa676b2c197d2a0ace35b268e00e3e2f707",
+        "size": 3265088,
+        "url": "https://dnf.pgedge.com/staging/10/RPMS/x86_64/pgedge-radar-0.6.3-1.el10.x86_64.rpm",
+        "version": "0.6.3-1.el10"
+      }
+    ],
+    "pepcell.v1.rpm.el-10.arm64.packaging": [
+      {
+        "arch": "aarch64",
+        "file": "pgedge-radar-0.6.3-1.el10.aarch64.rpm",
+        "name": "pgedge-radar",
+        "sha256": "e43964652c5633aaf8f1a0756f67d3f96fd08b5f24448699a11d4c47a684efb5",
+        "size": 2916177,
+        "url": "https://dnf.pgedge.com/staging/10/RPMS/aarch64/pgedge-radar-0.6.3-1.el10.aarch64.rpm",
+        "version": "0.6.3-1.el10"
+      }
+    ],
+    "pepcell.v1.rpm.el-9.amd64.packaging": [
+      {
+        "arch": "x86_64",
+        "file": "pgedge-radar-0.6.3-1.el9.x86_64.rpm",
+        "name": "pgedge-radar",
+        "sha256": "3266cd8782d62765b40b2fe51172442936330cce1e63f2685135d68ef9407347",
+        "size": 3264706,
+        "url": "https://dnf.pgedge.com/staging/9/RPMS/x86_64/pgedge-radar-0.6.3-1.el9.x86_64.rpm",
+        "version": "0.6.3-1.el9"
+      }
+    ],
+    "pepcell.v1.rpm.el-9.arm64.packaging": [
+      {
+        "arch": "aarch64",
+        "file": "pgedge-radar-0.6.3-1.el9.aarch64.rpm",
+        "name": "pgedge-radar",
+        "sha256": "040f8bd7d3995388d9874e8b6b4e1e4c0b0d0fb5ffe1ad903224f83645243f8a",
+        "size": 2916193,
+        "url": "https://dnf.pgedge.com/staging/9/RPMS/aarch64/pgedge-radar-0.6.3-1.el9.aarch64.rpm",
+        "version": "0.6.3-1.el9"
+      }
+    ]
+  },
+  "channel": "staging",
+  "fetched_at": "2026-11-07T20:58:23Z",
+  "metadata": {
+    "pepcell.v1.deb.bookworm.amd64.packaging": {
+      "inrelease_date": "Sat, 07 Nov 2026 02:39:22 UTC",
+      "packages_gz_sha256": "6702d1fa7c4f982815fd89fd7f7e6203629ee36fdf840c3be611fc938d880462",
+      "packages_gz_sha256_matches_inrelease": true,
+      "server_versions": {
+        "pgedge-postgresql-16": [
+          "16.15-1.bookworm"
+        ],
+        "pgedge-postgresql-17": [
+          "17.11-1.bookworm"
+        ],
+        "pgedge-postgresql-18": [
+          "18.6-1.bookworm"
+        ]
+      }
+    },
+    "pepcell.v1.deb.bookworm.arm64.packaging": {
+      "inrelease_date": "Sat, 07 Nov 2026 02:39:22 UTC",
+      "packages_gz_sha256": "14270ad4f5d1dd5c8c60efde9a4f71241d783f5acb05c7d70944631004e969ad",
+      "packages_gz_sha256_matches_inrelease": true,
+      "server_versions": {
+        "pgedge-postgresql-16": [
+          "16.15-1.bookworm"
+        ],
+        "pgedge-postgresql-17": [
+          "17.11-1.bookworm"
+        ],
+        "pgedge-postgresql-18": [
+          "18.6-1.bookworm"
+        ]
+      }
+    },
+    "pepcell.v1.deb.jammy.amd64.packaging": {
+      "inrelease_date": "Sat, 07 Nov 2026 02:50:32 UTC",
+      "packages_gz_sha256": "e9570af3f71bdde1ade2b0d8612cfc8344643c44e552b47f9709b364dbd51b80",
+      "packages_gz_sha256_matches_inrelease": true,
+      "server_versions": {
+        "pgedge-postgresql-16": [
+          "16.15-1.jammy"
+        ],
+        "pgedge-postgresql-17": [
+          "17.11-1.jammy"
+        ],
+        "pgedge-postgresql-18": [
+          "18.6-1.jammy"
+        ]
+      }
+    },
+    "pepcell.v1.deb.jammy.arm64.packaging": {
+      "inrelease_date": "Sat, 07 Nov 2026 02:50:32 UTC",
+      "packages_gz_sha256": "4508f49edbfd215a58574c5b5a90830f3e80daf13997f01de1992ebd8b38a902",
+      "packages_gz_sha256_matches_inrelease": true,
+      "server_versions": {
+        "pgedge-postgresql-16": [
+          "16.15-1.jammy"
+        ],
+        "pgedge-postgresql-17": [
+          "17.11-1.jammy"
+        ],
+        "pgedge-postgresql-18": [
+          "18.6-1.jammy"
+        ]
+      }
+    },
+    "pepcell.v1.deb.noble.amd64.packaging": {
+      "inrelease_date": "Sat, 07 Nov 2026 02:56:05 UTC",
+      "packages_gz_sha256": "3a31b6e211c6ff32bc04c52e601fc36f9a5265ac9dd7d9f55e33c88a9bc2688e",
+      "packages_gz_sha256_matches_inrelease": true,
+      "server_versions": {
+        "pgedge-postgresql-16": [
+          "16.15-1.noble"
+        ],
+        "pgedge-postgresql-17": [
+          "17.11-1.noble"
+        ],
+        "pgedge-postgresql-18": [
+          "18.6-1.noble"
+        ]
+      }
+    },
+    "pepcell.v1.deb.noble.arm64.packaging": {
+      "inrelease_date": "Sat, 07 Nov 2026 02:56:05 UTC",
+      "packages_gz_sha256": "2594538b5c91534c2db734cbeb76f172646feeb0830f2d8214f817dee82fee53",
+      "packages_gz_sha256_matches_inrelease": true,
+      "server_versions": {
+        "pgedge-postgresql-16": [
+          "16.15-1.noble"
+        ],
+        "pgedge-postgresql-17": [
+          "17.11-1.noble"
+        ],
+        "pgedge-postgresql-18": [
+          "18.6-1.noble"
+        ]
+      }
+    },
+    "pepcell.v1.deb.resolute.amd64.packaging": {
+      "inrelease_date": "Sat, 07 Nov 2026 03:00:51 UTC",
+      "packages_gz_sha256": "b606c8be4cc7e99b8f098ed3c7025d358ebc0511a9080877d8686c417da1b09c",
+      "packages_gz_sha256_matches_inrelease": true,
+      "server_versions": {
+        "pgedge-postgresql-16": [
+          "16.15-1.resolute"
+        ],
+        "pgedge-postgresql-17": [
+          "17.11-1.resolute"
+        ],
+        "pgedge-postgresql-18": [
+          "18.6-1.resolute"
+        ]
+      }
+    },
+    "pepcell.v1.deb.resolute.arm64.packaging": {
+      "inrelease_date": "Sat, 07 Nov 2026 03:00:51 UTC",
+      "packages_gz_sha256": "5e4592c1a79363af6d4153e6612c83c11ab12406609e1aec93571a4ba582628e",
+      "packages_gz_sha256_matches_inrelease": true,
+      "server_versions": {
+        "pgedge-postgresql-16": [
+          "16.15-1.resolute"
+        ],
+        "pgedge-postgresql-17": [
+          "17.11-1.resolute"
+        ],
+        "pgedge-postgresql-18": [
+          "18.6-1.resolute"
+        ]
+      }
+    },
+    "pepcell.v1.deb.trixie.amd64.packaging": {
+      "inrelease_date": "Sat, 07 Nov 2026 02:44:58 UTC",
+      "packages_gz_sha256": "0e9d666c891c5ba27b5201cfc78310053bd9f3a66ae7694fa4ea63ab77447774",
+      "packages_gz_sha256_matches_inrelease": true,
+      "server_versions": {
+        "pgedge-postgresql-16": [
+          "16.15-1.trixie"
+        ],
+        "pgedge-postgresql-17": [
+          "17.11-1.trixie"
+        ],
+        "pgedge-postgresql-18": [
+          "18.6-1.trixie"
+        ]
+      }
+    },
+    "pepcell.v1.deb.trixie.arm64.packaging": {
+      "inrelease_date": "Sat, 07 Nov 2026 02:44:58 UTC",
+      "packages_gz_sha256": "5cf09b3c8718509926a887ec690760d38ec153aea6dd599ecd2e1ee50d4812aa",
+      "packages_gz_sha256_matches_inrelease": true,
+      "server_versions": {
+        "pgedge-postgresql-16": [
+          "16.15-1.trixie"
+        ],
+        "pgedge-postgresql-17": [
+          "17.11-1.trixie"
+        ],
+        "pgedge-postgresql-18": [
+          "18.6-1.trixie"
+        ]
+      }
+    },
+    "pepcell.v1.rpm.el-10.amd64.packaging": {
+      "primary": "repodata/8138fb2d46c4a97cad6855cb0dcbb261f6f6bf2e5f4d2e02d98aa0554d2b6d22-primary.xml.gz",
+      "primary_sha256": "8138fb2d46c4a97cad6855cb0dcbb261f6f6bf2e5f4d2e02d98aa0554d2b6d22",
+      "primary_sha256_matches_repomd": true,
+      "repomd_revision": "1794005323",
+      "server_versions": {
+        "pgedge-postgresql16-server": [
+          "16.13-1.el10",
+          "16.14-1.el10",
+          "16.14-2.el10",
+          "16.15-1.el10"
+        ],
+        "pgedge-postgresql17-server": [
+          "17.10-1.el10",
+          "17.10-2.el10",
+          "17.11-1.el10",
+          "17.9-1.el10"
+        ],
+        "pgedge-postgresql18-server": [
+          "18.3-1.el10",
+          "18.4-1.el10",
+          "18.4-2.el10",
+          "18.5-1.el10",
+          "18.6-1.el10"
+        ]
+      }
+    },
+    "pepcell.v1.rpm.el-10.arm64.packaging": {
+      "primary": "repodata/27460a3ffb188af95a7e10802bfa4797503f7412b369fcc514dec1d55344368b-primary.xml.gz",
+      "primary_sha256": "27460a3ffb188af95a7e10802bfa4797503f7412b369fcc514dec1d55344368b",
+      "primary_sha256_matches_repomd": true,
+      "repomd_revision": "1794005306",
+      "server_versions": {
+        "pgedge-postgresql16-server": [
+          "16.13-1.el10",
+          "16.14-1.el10",
+          "16.14-2.el10",
+          "16.15-1.el10"
+        ],
+        "pgedge-postgresql17-server": [
+          "17.10-1.el10",
+          "17.10-2.el10",
+          "17.11-1.el10",
+          "17.9-1.el10"
+        ],
+        "pgedge-postgresql18-server": [
+          "18.3-1.el10",
+          "18.4-1.el10",
+          "18.4-2.el10",
+          "18.5-1.el10",
+          "18.6-1.el10"
+        ]
+      }
+    },
+    "pepcell.v1.rpm.el-9.amd64.packaging": {
+      "primary": "repodata/838cb38aeb0ec303d330959a332d4dcb032cd006bafd11ad4b6ea547af78ec16-primary.xml.gz",
+      "primary_sha256": "838cb38aeb0ec303d330959a332d4dcb032cd006bafd11ad4b6ea547af78ec16",
+      "primary_sha256_matches_repomd": true,
+      "repomd_revision": "1794005374",
+      "server_versions": {
+        "pgedge-postgresql16-server": [
+          "16.13-1.el9",
+          "16.14-1.el9",
+          "16.14-2.el9",
+          "16.15-1.el9"
+        ],
+        "pgedge-postgresql17-server": [
+          "17.10-1.el9",
+          "17.10-2.el9",
+          "17.11-1.el9",
+          "17.9-1.el9"
+        ],
+        "pgedge-postgresql18-server": [
+          "18.3-1.el9",
+          "18.4-1.el9",
+          "18.4-2.el9",
+          "18.5-1.el9",
+          "18.6-1.el9"
+        ]
+      }
+    },
+    "pepcell.v1.rpm.el-9.arm64.packaging": {
+      "primary": "repodata/e0715eab0ff52e65b132d0da452c0fc83f8d68ae65a03424a82e2b7f107d1e12-primary.xml.gz",
+      "primary_sha256": "e0715eab0ff52e65b132d0da452c0fc83f8d68ae65a03424a82e2b7f107d1e12",
+      "primary_sha256_matches_repomd": true,
+      "repomd_revision": "1794005359",
+      "server_versions": {
+        "pgedge-postgresql16-server": [
+          "16.13-1.el9",
+          "16.14-1.el9",
+          "16.14-2.el9",
+          "16.15-1.el9"
+        ],
+        "pgedge-postgresql17-server": [
+          "17.10-1.el9",
+          "17.10-2.el9",
+          "17.11-1.el9",
+          "17.9-1.el9"
+        ],
+        "pgedge-postgresql18-server": [
+          "18.3-1.el9",
+          "18.4-1.el9",
+          "18.4-2.el9",
+          "18.5-1.el9",
+          "18.6-1.el9"
+        ]
+      }
+    }
+  }
+}

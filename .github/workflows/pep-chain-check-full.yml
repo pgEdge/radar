@@ -1,0 +1,360 @@
+# -------------------------------------------------------------------------
+# TEMPORARY VALIDATION HARNESS: branch-scoped, never merged, NOT a release.
+#
+# Full certification of all 14 radar detector cells (42 legs: each cell on PG16/17/18)
+# with radar's own repository client certificate, through the release adapter and
+# certifier, every PEP call pinned to commit 9c6e993 (PEP branch
+# validate/pep-next-group-combined): this workflow -> pep-release-certify -> pep-certify ->
+# pep-capture and pep-integration. The branch starts at radar v0.6.3 (90faefd), whose
+# packaging/ tree the real detector reads. One push of its branch starts this one
+# run; radar's own release.yml (v* tags, manual dispatch) and ci.yml (main, PRs to
+# main) do not run on it. The assert job checks this run's evidence only.
+# Adapted from the ACE phase-3 harness (pgEdge/ace validate/pep-17584fd-ace-full14
+# @ 2674265, run 42107320941).
+#
+# Validation fixtures, stated plainly:
+#   * Nothing is built and nothing is published. The 14 "package" jobs download
+#     the already-published pgedge-radar 0.6.3-1 packages from the STAGING channel
+#     (where radar's release.yml routes a v0.6.3 tag) and verify their repository
+#     sha256 against .github/validation/radar-fixtures.json. The receipts recorded
+#     here are EXISTING-PACKAGE VALIDATION RECEIPTS: they bind those downloaded files
+#     to this run's cells only; they are NOT release-build receipts and do NOT
+#     establish or re-establish the packages' original build provenance.
+#   * Each package job also writes a validation manifest (every entry the package
+#     owns, bound to the file's sha256) and uploads it as validation-manifest__*.
+#     That artifact is not a receipt and is not read by PEP capture.
+#   * The identity inputs, `simulated: false` and `rpm_publication` /
+#     `deb_publication: success` are SYNTHETIC test inputs that drive the adapter's
+#     full path. No publication occurred in this run; any "published" wording in
+#     PEP's report reflects these inputs, not an event.
+#   * No PEP acceptance rule is changed for this harness. These are existing-package
+#     validation receipts, not evidence that radar's release workflow built the packages.
+# -------------------------------------------------------------------------
+
+name: PEP chain check, radar full, all 14 cells (validation, no build or publication)
+
+on:
+    push:
+        branches: [validate/pep-9c6e993-radar-full]
+
+permissions:
+    contents: read
+
+jobs:
+    # Verbatim from radar's release.yml (v0.6.3): the real detector decides the cell identities.
+    detect-matrix:
+        name: Detect build matrix
+        runs-on: ubuntu-latest
+        timeout-minutes: 10   # bounded: a stalled job fails instead of running for hours
+        outputs:
+            rpm_matrix: ${{ steps.detect.outputs.rpm_matrix }}
+            deb_matrix: ${{ steps.detect.outputs.deb_matrix }}
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+              with:
+                  # GoReleaser + the pgedge action clones use tokens from env /
+                  # explicit URLs, never the git remote, so don't persist the
+                  # workflow token into .git/config where later steps could read it.
+                  persist-credentials: false
+
+            - name: Checkout pgedge-detect-build-matrix
+              env:
+                  TOKEN: ${{ secrets.PGEDGE_BUILDER_TOKEN }}
+              run: |
+                  set -euo pipefail
+                  mkdir -p .github/actions
+                  git clone --depth 1 \
+                      "https://x-access-token:${TOKEN}@github.com/pgEdge/pgedge-detect-build-matrix.git" \
+                      ".github/actions/pgedge-detect-build-matrix"
+
+            - name: Detect build matrix
+              id: detect
+              uses: ./.github/actions/pgedge-detect-build-matrix
+              with:
+                  component_name: packaging
+                  # radar has no postgresql-N/ siblings; packaging is
+                  # pg-agnostic so the action accepts an empty input and
+                  # emits cells with pg_version="" (see pgedge-detect-build-matrix README).
+                  archs: '["amd64","arm64"]'
+                  rpm_images: '["almalinux:9","almalinux:10"]'
+                  deb_images: '["ubuntu:jammy","ubuntu:noble","ubuntu:resolute","debian:bookworm","debian:trixie"]'
+
+    # Every detector cell, unchanged; the run stops here unless the detector reports
+    # exactly the 14 cells of the fixture table, each once and in its own family.
+    select-cells:
+        name: Select all 14 detector cells
+        needs: detect-matrix
+        runs-on: ubuntu-latest
+        timeout-minutes: 10   # bounded: a stalled job fails instead of running for hours
+        outputs:
+            rpm_matrix: ${{ steps.pick.outputs.rpm_matrix }}
+            deb_matrix: ${{ steps.pick.outputs.deb_matrix }}
+        steps:
+            - name: Check out the fixture table
+              uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+              with:
+                  sparse-checkout: .github/validation
+                  persist-credentials: false
+            - name: Keep every cell; require exactly the 14 expected cell ids
+              id: pick
+              env:
+                  RPM: ${{ needs.detect-matrix.outputs.rpm_matrix }}
+                  DEB: ${{ needs.detect-matrix.outputs.deb_matrix }}
+                  FIXTURES: .github/validation/radar-fixtures.json
+              run: |
+                  set -euo pipefail
+                  rpm=$(jq -c . <<<"$RPM")
+                  deb=$(jq -c . <<<"$DEB")
+                  jq -e 'all(.include[]; .family == "rpm")' <<<"$rpm" >/dev/null || { echo "::error::a non-RPM cell in the RPM matrix"; exit 1; }
+                  jq -e 'all(.include[]; .family == "deb")' <<<"$deb" >/dev/null || { echo "::error::a non-DEB cell in the DEB matrix"; exit 1; }
+                  want=$(jq -r '.cells | keys[]' "$FIXTURES" | sort)
+                  got=$(jq -rn --argjson r "$rpm" --argjson d "$deb" '$r.include[].cell_id, $d.include[].cell_id' | sort)
+                  [ "$(grep -c . <<<"$want")" = 14 ] || { echo "::error::the fixture table must list exactly 14 cells"; exit 1; }
+                  if [ "$got" != "$want" ]; then
+                      echo "::error::the detector cells are not exactly the 14 expected cell ids"
+                      diff <(echo "$want") <(echo "$got") || true
+                      exit 1
+                  fi
+                  echo "rpm_matrix=$rpm" >> "$GITHUB_OUTPUT"
+                  echo "deb_matrix=$deb" >> "$GITHUB_OUTPUT"
+
+    # Fixed identity of the already-published staging packages. Synthetic inputs: see the header.
+    determine-repo-type:
+        name: Fixed validation identity (synthetic inputs; nothing is published)
+        runs-on: ubuntu-latest
+        timeout-minutes: 10   # bounded: a stalled job fails instead of running for hours
+        outputs:
+            repo-type:          staging    # SYNTHETIC: radar's release.yml routes v0.6.3 (no suffix) to staging
+            component-version:  "0.6.3"    # SYNTHETIC
+            component-buildnum: "1"        # SYNTHETIC
+            effective-tag:      v0.6.3     # SYNTHETIC
+            simulated:          "false"    # SYNTHETIC: drives the full path; nothing is published
+        steps:
+            - name: Label this run
+              run: |
+                  cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+                  ## Validation harness, not a release
+                  **These are existing-package validation receipts, not release-build receipts.**
+                  No build and no publication occur in this run. The packages are the already-published
+                  `pgedge-radar` 0.6.3-1 packages from the **staging** channel, downloaded and
+                  checksum-verified against repository metadata; the receipts bind those files to this
+                  run's cells only and do not establish their original build provenance (this is not
+                  evidence that radar's release workflow built them).
+                  The identity inputs (repo-type `staging`, version `0.6.3`, buildnum `1`, tag `v0.6.3`),
+                  `simulated: false` and the `success` publication inputs are synthetic validation inputs.
+                  Every PEP call is pinned to 9c6e993.
+                  EOF
+
+    package-rpm:
+        name: Package RPM (${{ matrix.image }} ${{ matrix.arch }}) [pep-cell:${{ matrix.cell_id }}]
+        needs: [select-cells]
+        runs-on: ubuntu-latest
+        timeout-minutes: 15   # bounded: a stalled job fails instead of running for hours
+        strategy:
+            fail-fast: false
+            matrix: ${{ fromJSON(needs.select-cells.outputs.rpm_matrix) }}
+        steps:
+            - name: Check out the fixture table
+              uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+              with:
+                  sparse-checkout: .github/validation
+                  persist-credentials: false
+            - name: Derive os_version from image
+              id: cell
+              env:
+                  IMAGE: ${{ matrix.image }}
+              run: |
+                  set -euo pipefail
+                  echo "os_version=${IMAGE##*:}" >> "$GITHUB_OUTPUT"
+            - name: Download the published package (validation fixture; nothing is built)
+              env:
+                  CELL:     ${{ matrix.cell_id }}
+                  FIXTURES: .github/validation/radar-fixtures.json
+                  DIR:      output/el${{ steps.cell.outputs.os_version }}-${{ matrix.arch }}
+              run: |
+                  set -euo pipefail
+                  [ "$(jq --arg c "$CELL" '.cells[$c] | length' "$FIXTURES")" = 1 ] || { echo "::error::expected exactly one fixture file for $CELL"; exit 1; }
+                  URL=$(jq -r --arg c "$CELL" '.cells[$c][0].url' "$FIXTURES")
+                  SHA256=$(jq -r --arg c "$CELL" '.cells[$c][0].sha256' "$FIXTURES")
+                  [[ "$URL" == https://dnf.pgedge.com/staging/* && "$SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::bad fixture entry for $CELL"; exit 1; }
+                  mkdir -p "$DIR"
+                  curl -fsSL --proto '=https' --proto-redir '=https' --retry 3 --connect-timeout 20 --max-time 300 -o "$DIR/${URL##*/}" "$URL"
+                  echo "$SHA256  $DIR/${URL##*/}" | sha256sum -c -
+            - name: Upload RPM cell artifact
+              id: up_pkg
+              uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+              with:
+                  name: rpm__el-${{ steps.cell.outputs.os_version }}__${{ matrix.arch }}
+                  path: output/el${{ steps.cell.outputs.os_version }}-${{ matrix.arch }}/
+                  retention-days: 7
+            - name: Generate pep-receipt/2 for the RPM cell
+              uses: pgEdge/pgedge-pep-test/.github/actions/pep-package-receipt@9c6e9937e93c1e92fa7bdcc672218e6a3c192a05
+              with:
+                  cell_id: ${{ matrix.cell_id }}
+                  family: rpm
+                  package_dir: output/el${{ steps.cell.outputs.os_version }}-${{ matrix.arch }}
+                  package_artifact_id: ${{ steps.up_pkg.outputs.artifact-id }}
+                  package_artifact_name: rpm__el-${{ steps.cell.outputs.os_version }}__${{ matrix.arch }}
+                  package_artifact_digest: ${{ steps.up_pkg.outputs.artifact-digest }}
+            # Validation only (never part of PEP): the package-owned manifest of the staged file,
+            # written outside the package directory after the receipt, under a non-pep- name.
+            - name: Ensure rpm tooling for the validation manifest
+              run: |
+                  set -euo pipefail
+                  if ! command -v rpm >/dev/null 2>&1; then
+                      sudo apt-get update -qq || true
+                      sudo apt-get install -y -qq rpm || true
+                  fi
+                  command -v rpm >/dev/null 2>&1 || { echo "::error::rpm tooling is required for the validation manifest"; exit 1; }
+            - name: Write the validation manifest (existing-package validation, not a receipt)
+              env:
+                  CELL: ${{ matrix.cell_id }}
+                  DIR:  output/el${{ steps.cell.outputs.os_version }}-${{ matrix.arch }}
+              run: |
+                  set -euo pipefail
+                  python3 .github/validation/validation_manifest.py rpm "$CELL" "$DIR" "manifest/${CELL//[^A-Za-z0-9._-]/_}.json"
+            - name: Upload the validation manifest
+              uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+              with:
+                  name: validation-manifest__rpm__el-${{ steps.cell.outputs.os_version }}__${{ matrix.arch }}
+                  path: manifest/
+                  if-no-files-found: error
+                  retention-days: 7
+
+    package-deb:
+        name: Package DEB (${{ matrix.image }} ${{ matrix.arch }}) [pep-cell:${{ matrix.cell_id }}]
+        needs: [select-cells]
+        runs-on: ubuntu-latest
+        timeout-minutes: 15   # bounded: a stalled job fails instead of running for hours
+        strategy:
+            fail-fast: false
+            matrix: ${{ fromJSON(needs.select-cells.outputs.deb_matrix) }}
+        steps:
+            - name: Check out the fixture table
+              uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+              with:
+                  sparse-checkout: .github/validation
+                  persist-credentials: false
+            - name: Derive distro from image
+              id: cell
+              env:
+                  IMAGE: ${{ matrix.image }}
+              run: |
+                  set -euo pipefail
+                  echo "distro=${IMAGE##*:}" >> "$GITHUB_OUTPUT"
+            - name: Download the published package (validation fixture; nothing is built)
+              env:
+                  CELL:     ${{ matrix.cell_id }}
+                  FIXTURES: .github/validation/radar-fixtures.json
+                  DIR:      output/${{ steps.cell.outputs.distro }}-${{ matrix.arch }}
+              run: |
+                  set -euo pipefail
+                  [ "$(jq --arg c "$CELL" '.cells[$c] | length' "$FIXTURES")" = 1 ] || { echo "::error::expected exactly one fixture file for $CELL"; exit 1; }
+                  URL=$(jq -r --arg c "$CELL" '.cells[$c][0].url' "$FIXTURES")
+                  SHA256=$(jq -r --arg c "$CELL" '.cells[$c][0].sha256' "$FIXTURES")
+                  [[ "$URL" == https://apt.pgedge.com/staging/* && "$SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::bad fixture entry for $CELL"; exit 1; }
+                  mkdir -p "$DIR"
+                  curl -fsSL --proto '=https' --proto-redir '=https' --retry 3 --connect-timeout 20 --max-time 300 -o "$DIR/${URL##*/}" "$URL"
+                  echo "$SHA256  $DIR/${URL##*/}" | sha256sum -c -
+            - name: Upload DEB cell artifact
+              id: up_pkg
+              uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+              with:
+                  name: deb__${{ steps.cell.outputs.distro }}__${{ matrix.arch }}
+                  path: output/${{ steps.cell.outputs.distro }}-${{ matrix.arch }}/
+                  retention-days: 7
+            - name: Generate pep-receipt/2 for the DEB cell
+              uses: pgEdge/pgedge-pep-test/.github/actions/pep-package-receipt@9c6e9937e93c1e92fa7bdcc672218e6a3c192a05
+              with:
+                  cell_id: ${{ matrix.cell_id }}
+                  family: deb
+                  package_dir: output/${{ steps.cell.outputs.distro }}-${{ matrix.arch }}
+                  package_artifact_id: ${{ steps.up_pkg.outputs.artifact-id }}
+                  package_artifact_name: deb__${{ steps.cell.outputs.distro }}__${{ matrix.arch }}
+                  package_artifact_digest: ${{ steps.up_pkg.outputs.artifact-digest }}
+            # Validation only (never part of PEP): the package-owned manifest of the staged file,
+            # written outside the package directory after the receipt, under a non-pep- name.
+            - name: Write the validation manifest (existing-package validation, not a receipt)
+              env:
+                  CELL: ${{ matrix.cell_id }}
+                  DIR:  output/${{ steps.cell.outputs.distro }}-${{ matrix.arch }}
+              run: |
+                  set -euo pipefail
+                  command -v dpkg-deb >/dev/null 2>&1 || { echo "::error::dpkg-deb is required for the validation manifest"; exit 1; }
+                  python3 .github/validation/validation_manifest.py deb "$CELL" "$DIR" "manifest/${CELL//[^A-Za-z0-9._-]/_}.json"
+            - name: Upload the validation manifest
+              uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+              with:
+                  name: validation-manifest__deb__${{ steps.cell.outputs.distro }}__${{ matrix.arch }}
+                  path: manifest/
+                  if-no-files-found: error
+                  retention-days: 7
+
+    # The call shape of the proven ACE harness, pinned to the PEP commit's full SHA;
+    # its `secrets:` lines are byte-identical to that harness.
+    certify:
+        name: Certify packages (PEP)
+        needs: [select-cells, determine-repo-type, package-rpm, package-deb]
+        if: always() && needs.determine-repo-type.result == 'success'
+        permissions:
+            contents: read      # nested checkouts of the pinned PEP implementation
+            actions: read       # capture lists THIS run's jobs + downloads its artifacts by id
+        uses: pgEdge/pgedge-pep-test/.github/workflows/pep-release-certify.yml@9c6e9937e93c1e92fa7bdcc672218e6a3c192a05
+        with:
+            rpm_matrix:      ${{ needs.select-cells.outputs.rpm_matrix }}
+            deb_matrix:      ${{ needs.select-cells.outputs.deb_matrix }}
+            component:       radar
+            version:         ${{ needs.determine-repo-type.outputs.component-version }}
+            buildnum:        ${{ needs.determine-repo-type.outputs.component-buildnum }}
+            effective_tag:   ${{ needs.determine-repo-type.outputs.effective-tag }}
+            channel:         ${{ needs.determine-repo-type.outputs.repo-type }}
+            simulated:       ${{ needs.determine-repo-type.outputs.simulated }}
+            rpm_publication: success      # SYNTHETIC validation input: nothing is published in this run
+            deb_publication: success      # SYNTHETIC validation input: nothing is published in this run
+            enforcement:     observe
+        secrets:
+            DOCKERHUB_USERNAME: ${{ needs.determine-repo-type.outputs.simulated == 'false' && secrets.DOCKERHUB_USERNAME || '' }}
+            DOCKERHUB_TOKEN:    ${{ needs.determine-repo-type.outputs.simulated == 'false' && secrets.DOCKERHUB_TOKEN || '' }}
+            PGEDGE_REPO_CLIENT_CRT: ${{ needs.determine-repo-type.outputs.simulated == 'false' && secrets.PGEDGE_REPO_CLIENT_CRT || '' }}
+            PGEDGE_REPO_CLIENT_KEY: ${{ needs.determine-repo-type.outputs.simulated == 'false' && secrets.PGEDGE_REPO_CLIENT_KEY || '' }}
+
+    assert:
+        name: assert chain evidence (full)
+        needs: [certify]
+        if: always()
+        runs-on: ubuntu-24.04
+        timeout-minutes: 15
+        permissions:
+            contents: read      # the verifier script on this branch
+            actions: read       # run metadata, this attempt's jobs and logs, this run's artifacts
+        env:
+            NEEDS_JSON: ${{ toJSON(needs) }}
+            GH_TOKEN:   ${{ github.token }}
+        steps:
+            - name: Check out the verifier
+              uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+              with:
+                  sparse-checkout: .github/validation
+                  persist-credentials: false
+            - name: Download this run's PEP evidence (current attempt only)
+              uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+              with:
+                  pattern: pep-*-r${{ github.run_number }}-a${{ github.run_attempt }}
+                  path: evidence
+            # Every artifact of this run (packages, receipts, validation manifests, PEP evidence),
+            # one directory each. Read only for the validation-manifest check and the guard that
+            # no radar bundle (radar-*.zip) is in any artifact.
+            - name: Download every artifact of this run (manifest and bundle checks)
+              uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+              with:
+                  path: all-artifacts
+            # Expected receipts, legs, coverage, checksums, test names/skips, radar log lines,
+            # manifests and credential evidence live in the script and radar-fixtures.json (the ACE
+            # 14-cell verifier with radar's expectations), checked offline before this branch is
+            # pushed. It also writes the per-cell coverage table to the step summary.
+            - name: Check the chain from evidence, not job colour
+              env:
+                  SELF_JOB_ID:   ${{ job.check_run_id }}   # this job: still running, so the one log not read
+                  ALL_ARTIFACTS: all-artifacts
+              run: python3 .github/validation/verify_chain.py full evidence

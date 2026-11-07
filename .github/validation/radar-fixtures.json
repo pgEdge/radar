@@ -1,0 +1,147 @@
+{
+  "cells": {
+    "pepcell.v1.deb.bookworm.amd64.packaging": [
+      {
+        "file": "pgedge-radar_0.6.3-1.bookworm_amd64.deb",
+        "name": "pgedge-radar",
+        "sha256": "2670bbd6630f90be66e310d25b279e5dece1ff30abed7291efbf7975a0d6bb6c",
+        "size": 3877474,
+        "url": "https://apt.pgedge.com/staging/bookworm/pool/main/p/pgedge-radar/pgedge-radar_0.6.3-1.bookworm_amd64.deb",
+        "version": "0.6.3-1.bookworm"
+      }
+    ],
+    "pepcell.v1.deb.bookworm.arm64.packaging": [
+      {
+        "file": "pgedge-radar_0.6.3-1.bookworm_arm64.deb",
+        "name": "pgedge-radar",
+        "sha256": "152b7a572f11e70aee6d3a3a95c7eab29dfc0af6fa539fbb3e35d5f139bd34aa",
+        "size": 3493476,
+        "url": "https://apt.pgedge.com/staging/bookworm/pool/main/p/pgedge-radar/pgedge-radar_0.6.3-1.bookworm_arm64.deb",
+        "version": "0.6.3-1.bookworm"
+      }
+    ],
+    "pepcell.v1.deb.jammy.amd64.packaging": [
+      {
+        "file": "pgedge-radar_0.6.3-1.jammy_amd64.deb",
+        "name": "pgedge-radar",
+        "sha256": "5db12f1cbd7a78f03713073bffd5792650e695ced813a83761214eb28621b57e",
+        "size": 3877498,
+        "url": "https://apt.pgedge.com/staging/jammy/pool/main/p/pgedge-radar/pgedge-radar_0.6.3-1.jammy_amd64.deb",
+        "version": "0.6.3-1.jammy"
+      }
+    ],
+    "pepcell.v1.deb.jammy.arm64.packaging": [
+      {
+        "file": "pgedge-radar_0.6.3-1.jammy_arm64.deb",
+        "name": "pgedge-radar",
+        "sha256": "00279a5963533241a4b5a9f766300e7360da0fa208144db10065289613b33814",
+        "size": 3493470,
+        "url": "https://apt.pgedge.com/staging/jammy/pool/main/p/pgedge-radar/pgedge-radar_0.6.3-1.jammy_arm64.deb",
+        "version": "0.6.3-1.jammy"
+      }
+    ],
+    "pepcell.v1.deb.noble.amd64.packaging": [
+      {
+        "file": "pgedge-radar_0.6.3-1.noble_amd64.deb",
+        "name": "pgedge-radar",
+        "sha256": "ea3a1bfe22cf8179b049ad7b135212f681d5eb9528ce7e0a4a990d2d5aa86dfa",
+        "size": 3877460,
+        "url": "https://apt.pgedge.com/staging/noble/pool/main/p/pgedge-radar/pgedge-radar_0.6.3-1.noble_amd64.deb",
+        "version": "0.6.3-1.noble"
+      }
+    ],
+    "pepcell.v1.deb.noble.arm64.packaging": [
+      {
+        "file": "pgedge-radar_0.6.3-1.noble_arm64.deb",
+        "name": "pgedge-radar",
+        "sha256": "08377ca7c46872ca61a908caf9bf3230bd5a854c88aa29033bcfaf01a34a67e2",
+        "size": 3493470,
+        "url": "https://apt.pgedge.com/staging/noble/pool/main/p/pgedge-radar/pgedge-radar_0.6.3-1.noble_arm64.deb",
+        "version": "0.6.3-1.noble"
+      }
+    ],
+    "pepcell.v1.deb.resolute.amd64.packaging": [
+      {
+        "file": "pgedge-radar_0.6.3-1.resolute_amd64.deb",
+        "name": "pgedge-radar",
+        "sha256": "5610a069d26c236ef319f21400f001146033d3ce11403c59bf71ba58931378e6",
+        "size": 3877494,
+        "url": "https://apt.pgedge.com/staging/resolute/pool/main/p/pgedge-radar/pgedge-radar_0.6.3-1.resolute_amd64.deb",
+        "version": "0.6.3-1.resolute"
+      }
+    ],
+    "pepcell.v1.deb.resolute.arm64.packaging": [
+      {
+        "file": "pgedge-radar_0.6.3-1.resolute_arm64.deb",
+        "name": "pgedge-radar",
+        "sha256": "25b977d08a06685810cf7129762e3b334883f46760e783b034ba4660d4394732",
+        "size": 3493476,
+        "url": "https://apt.pgedge.com/staging/resolute/pool/main/p/pgedge-radar/pgedge-radar_0.6.3-1.resolute_arm64.deb",
+        "version": "0.6.3-1.resolute"
+      }
+    ],
+    "pepcell.v1.deb.trixie.amd64.packaging": [
+      {
+        "file": "pgedge-radar_0.6.3-1.trixie_amd64.deb",
+        "name": "pgedge-radar",
+        "sha256": "845aa0b55fc1d068eeee549295ce3a711a64b0911d5d4619b8c2fe2402d3c336",
+        "size": 3877470,
+        "url": "https://apt.pgedge.com/staging/trixie/pool/main/p/pgedge-radar/pgedge-radar_0.6.3-1.trixie_amd64.deb",
+        "version": "0.6.3-1.trixie"
+      }
+    ],
+    "pepcell.v1.deb.trixie.arm64.packaging": [
+      {
+        "file": "pgedge-radar_0.6.3-1.trixie_arm64.deb",
+        "name": "pgedge-radar",
+        "sha256": "60f54ebd36af17a3226e43bf0ff1566935a462aeed3eb616ce98ca900f6f127c",
+        "size": 3493468,
+        "url": "https://apt.pgedge.com/staging/trixie/pool/main/p/pgedge-radar/pgedge-radar_0.6.3-1.trixie_arm64.deb",
+        "version": "0.6.3-1.trixie"
+      }
+    ],
+    "pepcell.v1.rpm.el-10.amd64.packaging": [
+      {
+        "file": "pgedge-radar-0.6.3-1.el10.x86_64.rpm",
+        "name": "pgedge-radar",
+        "sha256": "8c46e234f6339c39190a9b3cda447aa676b2c197d2a0ace35b268e00e3e2f707",
+        "size": 3265088,
+        "url": "https://dnf.pgedge.com/staging/10/RPMS/x86_64/pgedge-radar-0.6.3-1.el10.x86_64.rpm",
+        "version": "0.6.3-1.el10"
+      }
+    ],
+    "pepcell.v1.rpm.el-10.arm64.packaging": [
+      {
+        "file": "pgedge-radar-0.6.3-1.el10.aarch64.rpm",
+        "name": "pgedge-radar",
+        "sha256": "e43964652c5633aaf8f1a0756f67d3f96fd08b5f24448699a11d4c47a684efb5",
+        "size": 2916177,
+        "url": "https://dnf.pgedge.com/staging/10/RPMS/aarch64/pgedge-radar-0.6.3-1.el10.aarch64.rpm",
+        "version": "0.6.3-1.el10"
+      }
+    ],
+    "pepcell.v1.rpm.el-9.amd64.packaging": [
+      {
+        "file": "pgedge-radar-0.6.3-1.el9.x86_64.rpm",
+        "name": "pgedge-radar",
+        "sha256": "3266cd8782d62765b40b2fe51172442936330cce1e63f2685135d68ef9407347",
+        "size": 3264706,
+        "url": "https://dnf.pgedge.com/staging/9/RPMS/x86_64/pgedge-radar-0.6.3-1.el9.x86_64.rpm",
+        "version": "0.6.3-1.el9"
+      }
+    ],
+    "pepcell.v1.rpm.el-9.arm64.packaging": [
+      {
+        "file": "pgedge-radar-0.6.3-1.el9.aarch64.rpm",
+        "name": "pgedge-radar",
+        "sha256": "040f8bd7d3995388d9874e8b6b4e1e4c0b0d0fb5ffe1ad903224f83645243f8a",
+        "size": 2916193,
+        "url": "https://dnf.pgedge.com/staging/9/RPMS/aarch64/pgedge-radar-0.6.3-1.el9.aarch64.rpm",
+        "version": "0.6.3-1.el9"
+      }
+    ]
+  },
+  "channel": "staging",
+  "note": "Validation fixture table, read-only: the already-published pgedge-radar 0.6.3-1 packages in the STAGING channel, one per detector cell, with the sha256 and size from the repository metadata (the independent source). The package jobs download these files and check them against it; verify_chain.py expects these sha256 values at every stage. These are existing-package validation fixtures, not release-build outputs.",
+  "source_table_sha256": "f86f1c2efcb329d565ff43882d4e8bcd2012cb9d1ff17f5a40aea21dadef8077"
+}
