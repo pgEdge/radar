@@ -12,6 +12,7 @@ package main
 
 import (
 	"archive/zip"
+	"bytes"
 	"database/sql"
 	"errors"
 	"flag"
@@ -676,46 +677,100 @@ func collect(cfg *Config, zipWriter *zip.Writer, tasks []CollectionTask) int {
 	return collected
 }
 
-// execCommand executes a command and returns its output
-func execCommand(name string, args ...string) ([]byte, error) {
-	cmd := exec.Command(name, args...)
-	output, err := cmd.CombinedOutput()
+// commandHeadSize is how much of a command's output is held back from the
+// archive until the command either succeeds or writes more. A command that
+// fails within it is classified by its error message and leaves no entry.
+const commandHeadSize = 4096
 
-	if err != nil {
-		outputStr := string(output)
-
-		// Check for special cases first
-		if special, ok := handleSpecialCases(name, output); ok {
-			return special, nil
-		}
-
-		// Check if command not found
-		if isCommandNotFoundError(err) {
-			return nil, NewSkipError(fmt.Sprintf("command not found: %s", name))
-		}
-
-		// Check if no data available
-		if isNoDataAvailable(outputStr) {
-			return nil, NewSkipError(fmt.Sprintf("data not available: %s", name))
-		}
-
-		// Real error
-		return nil, fmt.Errorf("command '%s %v' failed: %w (output: %s)", name, args, err, outputStr)
-	}
-
-	return output, nil
+// headWriter holds back the first commandHeadSize bytes written to it, then
+// streams everything to w.
+type headWriter struct {
+	w         io.Writer
+	head      []byte
+	streaming bool
 }
 
-// readFile reads a file from the filesystem
-func readFile(path string) ([]byte, error) {
-	data, err := os.ReadFile(path)
+// Write holds p back while the output still fits in the head, and otherwise
+// streams the head and p to the underlying writer.
+func (h *headWriter) Write(p []byte) (int, error) {
+	if !h.streaming && len(h.head)+len(p) <= commandHeadSize {
+		h.head = append(h.head, p...)
+		return len(p), nil
+	}
+	if err := h.flush(); err != nil {
+		return 0, err
+	}
+	return h.w.Write(p)
+}
+
+// flush writes the held-back head to the underlying writer, once.
+func (h *headWriter) flush() error {
+	if h.streaming {
+		return nil
+	}
+	h.streaming = true
+	_, err := h.w.Write(h.head)
+	return err
+}
+
+// execCommand streams a command's stdout and stderr into w. Both go through
+// the same writer, so os/exec gives the command a single pipe for the two and
+// they arrive in the order the command wrote them.
+func execCommand(w io.Writer, name string, args ...string) error {
+	out := &headWriter{w: w, head: make([]byte, 0, commandHeadSize)}
+	cmd := exec.Command(name, args...)
+	cmd.Stdout = out
+	cmd.Stderr = out
+	err := cmd.Run()
+	if err == nil {
+		return out.flush()
+	}
+
+	// The output is in the archive already, so only the failure is left to report.
+	if out.streaming {
+		return fmt.Errorf("command '%s %v' failed: %w", name, args, err)
+	}
+
+	if special, ok := handleSpecialCases(name, out.head); ok {
+		_, err := w.Write(special)
+		return err
+	}
+
+	if isCommandNotFoundError(err) {
+		return NewSkipError(fmt.Sprintf("command not found: %s", name))
+	}
+
+	outputStr := string(out.head)
+	if isNoDataAvailable(outputStr) {
+		return NewSkipError(fmt.Sprintf("data not available: %s", name))
+	}
+
+	return fmt.Errorf("command '%s %v' failed: %w (output: %s)", name, args, err, outputStr)
+}
+
+// openFile opens path for reading. A missing file is a skip.
+func openFile(path string) (*os.File, error) {
+	f, err := os.Open(path)
+	if os.IsNotExist(err) {
+		return nil, NewSkipError(fmt.Sprintf("file not found: %s", path))
+	}
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, NewSkipError(fmt.Sprintf("file not found: %s", path))
-		}
 		return nil, fmt.Errorf("read failed: %w", err)
 	}
-	return data, nil
+	return f, nil
+}
+
+// copyFile streams the file at path into w.
+func copyFile(path string, w io.Writer) error {
+	f, err := openFile(path)
+	if err != nil {
+		return err
+	}
+	defer closeErrCheck(f, path)
+	if _, err := io.Copy(w, f); err != nil {
+		return fmt.Errorf("read failed: %w", err)
+	}
+	return nil
 }
 
 // writeDirListingTSV writes a TSV listing of the regular files in dir: one row
@@ -759,27 +814,17 @@ func closeErrCheck(closer io.Closer, resourceName string) {
 	}
 }
 
-// execCommandCollector creates a collector that executes a command and writes output
+// execCommandCollector creates a collector that streams a command's output
 func execCommandCollector(name string, args ...string) func(*Config, io.Writer) error {
 	return func(cfg *Config, w io.Writer) error {
-		data, err := execCommand(name, args...)
-		if err != nil {
-			return err
-		}
-		_, err = w.Write(data)
-		return err
+		return execCommand(w, name, args...)
 	}
 }
 
-// readFileCollector creates a collector that reads a file and writes its contents
+// readFileCollector creates a collector that streams a file's contents
 func readFileCollector(path string) func(*Config, io.Writer) error {
 	return func(cfg *Config, w io.Writer) error {
-		data, err := readFile(path)
-		if err != nil {
-			return err
-		}
-		_, err = w.Write(data)
-		return err
+		return copyFile(path, w)
 	}
 }
 
@@ -847,26 +892,19 @@ func rowsToTSV(rows *sql.Rows, w io.Writer) error {
 				}
 			}
 
-			if val == nil {
+			var field []byte
+			switch v := val.(type) {
+			case nil:
 				// NULL → empty string
 				continue
-			}
-
-			// Convert to string
-			var str string
-			switch v := val.(type) {
 			case []byte:
-				str = string(v)
+				field = v
+			case string:
+				field = []byte(v)
 			default:
-				str = fmt.Sprintf("%v", v)
+				field = fmt.Append(nil, v)
 			}
-
-			// TSV escaping: quote if contains tab, newline, or quote
-			if strings.ContainsAny(str, "\t\n\r\"") {
-				str = `"` + strings.ReplaceAll(str, `"`, `""`) + `"`
-			}
-
-			if _, err := io.WriteString(w, str); err != nil {
+			if err := writeTSVField(w, field); err != nil {
 				return err
 			}
 		}
@@ -880,4 +918,36 @@ func rowsToTSV(rows *sql.Rows, w io.Writer) error {
 	}
 
 	return nil
+}
+
+// writeTSVField writes field, quoted when it holds a tab, newline, carriage
+// return or double quote, with each double quote doubled. It writes the field
+// in pieces rather than building an escaped copy of it.
+func writeTSVField(w io.Writer, field []byte) error {
+	if !bytes.ContainsAny(field, "\t\n\r\"") {
+		_, err := w.Write(field)
+		return err
+	}
+	if _, err := io.WriteString(w, `"`); err != nil {
+		return err
+	}
+	for {
+		i := bytes.IndexByte(field, '"')
+		if i < 0 {
+			break
+		}
+		// field[:i+1] ends with the quote, and the write after it doubles it.
+		if _, err := w.Write(field[:i+1]); err != nil {
+			return err
+		}
+		if _, err := io.WriteString(w, `"`); err != nil {
+			return err
+		}
+		field = field[i+1:]
+	}
+	if _, err := w.Write(field); err != nil {
+		return err
+	}
+	_, err := io.WriteString(w, `"`)
+	return err
 }

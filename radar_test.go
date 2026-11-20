@@ -17,11 +17,14 @@ import (
 	"database/sql"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"net"
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -30,92 +33,177 @@ import (
 	"github.com/jackc/pgx/v5/pgproto3"
 )
 
-// Test execCommand helper
+// TestExecCommand checks what execCommand writes for each outcome of a
+// command, and how it classifies a failure.
 func TestExecCommand(t *testing.T) {
+	const skip = "skip"
 	tests := []struct {
-		name        string
-		command     string
-		args        []string
-		shouldError bool
+		name    string
+		command string
+		args    []string
+		want    string // what reaches the writer
+		wantErr string // "" for success, skip for a SkipError, else part of the error
 	}{
-		{
-			name:        "valid command - echo",
-			command:     "echo",
-			args:        []string{"test"},
-			shouldError: false,
-		},
-		{
-			name:        "invalid command",
-			command:     "nonexistentcommand12345",
-			args:        []string{},
-			shouldError: true,
-		},
+		{"stdout", "echo", []string{"test"}, "test\n", ""},
+		{"stderr in order with stdout", "sh", []string{"-c", "echo out; echo err >&2; echo out2"}, "out\nerr\nout2\n", ""},
+		{"command not found", "nonexistentcommand12345", nil, "", skip},
+		{"no data", "sh", []string{"-c", "echo 'No such file or directory' >&2; exit 1"}, "", skip},
+		{"failure before any output is written", "sh", []string{"-c", "echo boom >&2; exit 2"}, "", "boom"},
+		{"failure after output is written", "sh", []string{"-c", fmt.Sprintf("head -c %d /dev/zero; exit 2", 2*commandHeadSize)},
+			strings.Repeat("\x00", 2*commandHeadSize), "exit status 2"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := execCommand(tt.command, tt.args...)
-			if tt.shouldError && err == nil {
-				t.Errorf("expected error but got none")
-			}
-			if !tt.shouldError && err != nil {
+			var buf bytes.Buffer
+			err := execCommand(&buf, tt.command, tt.args...)
+			var skipErr SkipError
+			switch {
+			case tt.wantErr == "" && err != nil:
 				t.Errorf("unexpected error: %v", err)
+			case tt.wantErr == skip && !errors.As(err, &skipErr):
+				t.Errorf("want a SkipError, got %v", err)
+			case tt.wantErr != "" && tt.wantErr != skip && (err == nil || !strings.Contains(err.Error(), tt.wantErr)):
+				t.Errorf("want an error containing %q, got %v", tt.wantErr, err)
+			}
+			if buf.String() != tt.want {
+				t.Errorf("wrote %q, want %q", buf.String(), tt.want)
 			}
 		})
 	}
 }
 
-// Test readFile helper
-func TestReadFile(t *testing.T) {
-	// Create a temporary file
-	tmpfile, err := os.CreateTemp("", "radar_test_*.txt")
+// TestExecCommandNotVirtualized checks that the "none" systemd-detect-virt
+// prints, exiting 1, on a host that is not virtualised is collected as output.
+func TestExecCommandNotVirtualized(t *testing.T) {
+	dir := t.TempDir()
+	stub := "#!/bin/sh\necho none\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(dir, "systemd-detect-virt"), []byte(stub), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	var buf bytes.Buffer
+	if err := execCommand(&buf, "systemd-detect-virt"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if buf.String() != "none\n" {
+		t.Errorf("wrote %q, want %q", buf.String(), "none\n")
+	}
+}
+
+// TestCopyFile checks that copyFile writes a file's contents, and that a
+// missing file is a skip.
+func TestCopyFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "radar_test.txt")
+	content := "test content\nline 2\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	if err := copyFile(path, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if buf.String() != content {
+		t.Errorf("wrote %q, want %q", buf.String(), content)
+	}
+
+	var skipErr SkipError
+	if err := copyFile("/nonexistent/file/path/12345", &buf); !errors.As(err, &skipErr) {
+		t.Errorf("want a SkipError for a missing file, got %v", err)
+	}
+}
+
+// streamedSize is large enough that a collector holding its output whole
+// allocates many times maxCollectAlloc.
+const streamedSize = 64 << 20
+
+// maxCollectAlloc bounds the heap that collect may allocate while it streams
+// streamedSize bytes into the archive. About 0.85 MiB of it is the zip
+// writer's DEFLATE compressor, whose size is fixed.
+const maxCollectAlloc = 1 << 20
+
+// collectAlloc runs task through collect into a zip archive on disk. It returns
+// the bytes allocated on the heap meanwhile and the uncompressed size of the
+// entry the task wrote.
+func collectAlloc(t *testing.T, task CollectionTask) (alloc, size uint64) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "radar.zip")
+	f, err := os.Create(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		if err := os.Remove(tmpfile.Name()); err != nil {
-			t.Logf("Warning: failed to remove temp file: %v", err)
-		}
-	}()
+	defer closeErrCheck(f, "archive")
 
-	testContent := "test content\nline 2\n"
-	if _, err := tmpfile.Write([]byte(testContent)); err != nil {
+	// Two collections empty the zip package's pool of compressors, so the one
+	// this archive uses is allocated, and counted, inside the measurement.
+	runtime.GC()
+	runtime.GC()
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	zw := zip.NewWriter(f)
+	collected := collect(&Config{}, zw, []CollectionTask{task})
+	err = zw.Close()
+	runtime.ReadMemStats(&after)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := tmpfile.Close(); err != nil {
+	if collected != 1 {
+		t.Fatalf("collected %d tasks, want 1", collected)
+	}
+
+	r, err := zip.OpenReader(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeErrCheck(r, "archive reader")
+	alloc, size = after.TotalAlloc-before.TotalAlloc, r.File[0].UncompressedSize64
+	t.Logf("collecting %d bytes allocated %d bytes", size, alloc)
+	return alloc, size
+}
+
+// TestCollectStreamsCommandOutput checks that a command's output flows into the
+// archive through fixed-size buffers rather than being held in memory whole.
+func TestCollectStreamsCommandOutput(t *testing.T) {
+	alloc, size := collectAlloc(t, CollectionTask{
+		Name:        "large_command",
+		ArchivePath: "test/large_command.out",
+		Collector:   execCommandCollector("head", "-c", strconv.Itoa(streamedSize), "/dev/zero"),
+	})
+	if size != streamedSize {
+		t.Errorf("archive entry holds %d bytes, want %d", size, streamedSize)
+	}
+	if alloc > maxCollectAlloc {
+		t.Errorf("collecting %d bytes allocated %d bytes, want at most %d", size, alloc, maxCollectAlloc)
+	}
+}
+
+// TestCollectStreamsFile checks that a file flows into the archive through
+// fixed-size buffers rather than being held in memory whole.
+func TestCollectStreamsFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "large_file")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Truncate(streamedSize); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
 		t.Fatal(err)
 	}
 
-	tests := []struct {
-		name        string
-		path        string
-		shouldError bool
-	}{
-		{
-			name:        "valid file",
-			path:        tmpfile.Name(),
-			shouldError: false,
-		},
-		{
-			name:        "nonexistent file",
-			path:        "/nonexistent/file/path/12345",
-			shouldError: true,
-		},
+	alloc, size := collectAlloc(t, CollectionTask{
+		Name:        "large_file",
+		ArchivePath: "test/large_file.out",
+		Collector:   readFileCollector(path),
+	})
+	if size != streamedSize {
+		t.Errorf("archive entry holds %d bytes, want %d", size, streamedSize)
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			data, err := readFile(tt.path)
-			if tt.shouldError && err == nil {
-				t.Errorf("expected error but got none")
-			}
-			if !tt.shouldError && err != nil {
-				t.Errorf("unexpected error: %v", err)
-			}
-			if !tt.shouldError && string(data) != testContent {
-				t.Errorf("expected %q, got %q", testContent, string(data))
-			}
-		})
+	if alloc > maxCollectAlloc {
+		t.Errorf("collecting %d bytes allocated %d bytes, want at most %d", size, alloc, maxCollectAlloc)
 	}
 }
 
@@ -192,6 +280,12 @@ func TestRowsToTSV(t *testing.T) {
 			columns:  []string{"data"},
 			addRows:  func(r *sqlmock.Rows) *sqlmock.Rows { return r.AddRow([]byte("hello")) },
 			expected: "data\nhello\n",
+		},
+		{
+			name:     "byte array escaping",
+			columns:  []string{"data"},
+			addRows:  func(r *sqlmock.Rows) *sqlmock.Rows { return r.AddRow([]byte("{\"a\":\t1}")) },
+			expected: "data\n\"{\"\"a\"\":\t1}\"\n",
 		},
 		{
 			name:     "integer",

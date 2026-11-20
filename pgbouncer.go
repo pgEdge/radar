@@ -12,7 +12,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -81,12 +80,13 @@ func collectPgBouncerINI(cfg *Config, w io.Writer) error {
 		return err
 	}
 
-	data, err := readFile(filepath.Join(dir, "pgbouncer.ini"))
+	f, err := openFile(filepath.Join(dir, "pgbouncer.ini"))
 	if err != nil {
 		return err
 	}
+	defer closeErrCheck(f, "pgbouncer.ini")
 
-	return filterPgBouncerINI(data, w)
+	return filterPgBouncerINI(f, w)
 }
 
 // filterPgBouncerINI ships the [pgbouncer] section verbatim and keeps only the
@@ -100,10 +100,10 @@ func collectPgBouncerINI(cfg *Config, w io.Writer) error {
 // connection string carries a password as readily as a live one, and no comment
 // is worth the trouble of deciding which ones are safe. An %include line is not
 // a comment and is kept, naming a file radar does not follow.
-func filterPgBouncerINI(data []byte, w io.Writer) error {
+func filterPgBouncerINI(r io.Reader, w io.Writer) error {
 	shipValues := false
 
-	scanner := bufio.NewScanner(bytes.NewReader(data))
+	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		line := scanner.Text()
 		trimmed := strings.TrimSpace(line)

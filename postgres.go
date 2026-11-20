@@ -108,12 +108,7 @@ func collectPGConfigFile(db *sql.DB, cfg *Config, task SimpleConfigFileTask, w i
 	if err != nil {
 		return err
 	}
-	data, err := readFile(path)
-	if err != nil {
-		return err
-	}
-	_, err = w.Write(data)
-	return err
+	return copyFile(path, w)
 }
 
 // configFilePath resolves the file through its location setting, or under the
