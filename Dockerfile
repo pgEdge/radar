@@ -1,4 +1,4 @@
-FROM debian:latest
+FROM debian:stable
 
 # Install PostgreSQL 18 from official PostgreSQL repository
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -35,5 +35,5 @@ WORKDIR /radar
 COPY radar ./radar
 COPY test-radar.sh ./test-radar.sh
 
-# Default command
-CMD ["./test-radar.sh"]
+# The scenario number is the container's argument
+ENTRYPOINT ["./test-radar.sh"]

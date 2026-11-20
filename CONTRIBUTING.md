@@ -483,8 +483,9 @@ runs only in GitHub CI:
 ./run-ci-local.sh
 ```
 
-The script runs the permission scenarios one after another in a single
-container, whereas GitHub CI runs each scenario in an isolated container.
+The script and GitHub CI build the same Dockerfile and run the same
+`test-radar.sh` scenarios, each in its own container. The script runs the
+containers one after another, and GitHub CI runs them as parallel jobs.
 
 The script performs the following steps in order:
 
@@ -504,14 +505,14 @@ The script also creates a timestamped log file named `ci-YYYYMMDD-HHMMSS.log`.
 
 ### Testing with Docker
 
-The following commands build and run the integration tests in a Debian
-container, run radar manually without PostgreSQL collection, and list the
-contents of the archive:
+The following commands build and run the integration tests in Debian
+containers, one per scenario, run radar manually without PostgreSQL collection,
+and list the contents of the archive:
 
 ```bash
-# Build and test in Debian container
+# Build the image, then run each scenario in its own container
 docker build -t radar-test .
-docker run --rm radar-test
+for s in $(./test-radar.sh --list); do docker run --rm radar-test "$s"; done
 
 # Manual testing after build
 ./radar --skip-postgres -v

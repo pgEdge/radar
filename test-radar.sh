@@ -1,6 +1,7 @@
 #!/bin/bash
 # Test script for radar in a Debian container with PostgreSQL 18
-# Tests all 6 scenarios:
+# Runs one scenario per container, so that no scenario inherits state another
+# left behind. --list prints the scenario numbers:
 # 1. Root + superuser
 # 2. Root + pg_monitor
 # 3. Non-root + superuser
@@ -14,6 +15,20 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
+
+# The scenario numbers, read from the scenario_N functions below
+list_scenarios() {
+	sed -n 's/^scenario_\([0-9][0-9]*\)() {$/\1/p' "$0"
+}
+if [ "$1" = "--list" ]; then
+	list_scenarios
+	exit 0
+fi
+SCENARIO="$1"
+if ! list_scenarios | grep -qxF "$SCENARIO"; then
+	echo -e "${RED}Usage: $0 --list | <scenario>, one of: $(list_scenarios | tr '\n' ' ')${NC}" >&2
+	exit 1
+fi
 
 # Binary is pre-built by run-ci-local.sh and copied into container by Dockerfile
 echo "Using pre-built radar binary..."
@@ -400,6 +415,7 @@ validate_zip() {
 SERVER_LOG_CHECKED=$(server_log | wc -c)
 
 # Scenario 1: Root + superuser
+scenario_1() {
 echo ""
 echo "========================================"
 echo -e "${YELLOW}Scenario 1: Root + superuser${NC}"
@@ -419,8 +435,10 @@ if ! unzip -l "$ZIP1" | grep -q " databases/noconnect/"; then
 fi
 echo -e "${GREEN}✓ Scenario 1 PASSED${NC}"
 rm -f "$ZIP1"
+}
 
 # Scenario 2: Root + pg_monitor
+scenario_2() {
 echo ""
 echo "========================================"
 echo -e "${YELLOW}Scenario 2: Root + pg_monitor${NC}"
@@ -437,8 +455,10 @@ if [ "$(echo "$OUT2" | grep -cE '^ERROR: ✗ noconnect/[^:]+: no CONNECT privile
 fi
 echo -e "${GREEN}✓ Scenario 2 PASSED${NC}"
 rm -f "$ZIP2"
+}
 
 # Scenario 3: Non-root + superuser
+scenario_3() {
 echo ""
 echo "========================================"
 echo -e "${YELLOW}Scenario 3: Non-root + superuser${NC}"
@@ -450,8 +470,10 @@ if ! validate_zip "$ZIP3" "Scenario 3" "no"; then
 fi
 echo -e "${GREEN}✓ Scenario 3 PASSED${NC}"
 rm -f "$ZIP3"
+}
 
 # Scenario 4: Non-root + pg_monitor
+scenario_4() {
 echo ""
 echo "========================================"
 echo -e "${YELLOW}Scenario 4: Non-root + pg_monitor${NC}"
@@ -463,8 +485,10 @@ if ! validate_zip "$ZIP4" "Scenario 4" "no"; then
 fi
 echo -e "${GREEN}✓ Scenario 4 PASSED${NC}"
 rm -f "$ZIP4"
+}
 
 # Scenario 5: Certificate authentication
+scenario_5() {
 echo ""
 echo "========================================"
 echo -e "${YELLOW}Scenario 5: Certificate authentication${NC}"
@@ -505,7 +529,7 @@ ssl_key_file = 'server.key'
 ssl_ca_file = 'ca.crt'
 SSLCONF"
 
-# Replace pg_hba.conf: cert auth for testuser, trust for postgres (scenarios 1-4 already passed)
+# Replace pg_hba.conf: cert auth for testuser, trust for postgres
 su - postgres -c "cat > $PGCONF/pg_hba.conf << 'HBA'
 local   all             all                                     trust
 hostssl testdb          testuser        127.0.0.1/32            cert
@@ -529,8 +553,10 @@ if ! validate_zip "$ZIP5" "Scenario 5" "yes"; then
 fi
 echo -e "${GREEN}✓ Scenario 5 PASSED${NC}"
 rm -f "$ZIP5"
+}
 
 # Scenario 6: GSSAPI/Kerberos authentication
+scenario_6() {
 echo ""
 echo "========================================"
 echo -e "${YELLOW}Scenario 6: GSSAPI/Kerberos authentication${NC}"
@@ -618,10 +644,10 @@ if ! grep -qE 'connection authenticated: identity="testuser(@[^"]*)?" method=gss
 fi
 echo -e "${GREEN}✓ Scenario 6 PASSED${NC}"
 rm -f "$ZIP6"
+}
+
+"scenario_$SCENARIO"
 
 echo ""
 echo "Stopping PostgreSQL..."
 su - postgres -c "/usr/lib/postgresql/18/bin/pg_ctl -D /var/lib/postgresql/18/main stop"
-
-echo ""
-echo -e "${GREEN}All 6 scenarios passed!${NC}"
