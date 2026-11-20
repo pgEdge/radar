@@ -505,16 +505,15 @@ The script also creates a timestamped log file named `ci-YYYYMMDD-HHMMSS.log`.
 
 ### Testing with Docker
 
-The following commands build and run the integration tests in Debian
-containers, one per scenario, run radar manually without PostgreSQL collection,
-and list the contents of the archive:
+The following commands build the integration test image, run one scenario in
+a Debian container, run radar manually without PostgreSQL collection, and list
+the contents of the archive. `./test-radar.sh --list` prints the scenario
+numbers, and `./run-ci-local.sh` runs every scenario:
 
 ```bash
-# Build the image, then run each scenario in its own container
+# Build the image and run scenario 1 in its own container
 docker build -t radar-test .
-for s in $(./test-radar.sh --list); do
-    docker run --rm radar-test ./test-radar.sh "$s"
-done
+docker run --rm radar-test ./test-radar.sh 1
 
 # Manual testing after build
 ./radar --skip-postgres -v
