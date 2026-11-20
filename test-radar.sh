@@ -586,7 +586,7 @@ su - postgres -c "/usr/lib/postgresql/18/bin/psql -c \"ALTER SYSTEM SET log_conn
 # Add GSSAPI auth and ident map
 # Every testuser connection over TCP must authenticate with GSSAPI: no trust
 # line can match testuser first
-cat > "$PGDATA/pg_hba.conf" << HBA
+cat > "$PGCONF/pg_hba.conf" << HBA
 local   all             all                                     trust
 host    all             testuser        127.0.0.1/32            gss include_realm=0
 host    all             testuser        ::1/128                 gss include_realm=0
