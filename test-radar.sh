@@ -25,7 +25,7 @@ if [ "$1" = "--list" ]; then
 	exit 0
 fi
 SCENARIO="$1"
-if ! list_scenarios | grep -qxF "$SCENARIO"; then
+if [[ ! "$SCENARIO" =~ ^[0-9]+$ ]] || ! list_scenarios | grep -qxF "$SCENARIO"; then
 	echo -e "${RED}Usage: $0 --list | <scenario>, one of: $(list_scenarios | tr '\n' ' ')${NC}" >&2
 	exit 1
 fi
@@ -365,7 +365,7 @@ validate_zip() {
 		required="$required postgresql/pg_hba.conf postgresql/pg_ident.conf"
 	fi
 	for f in $required; do
-		if ! unzip -l "$zip_file" | grep -q " $f\$"; then
+		if ! unzip -Z1 "$zip_file" | grep -qxF -- "$f"; then
 			echo -e "${RED}✗ $scenario FAILED: $f missing from archive${NC}"
 			return 1
 		fi
@@ -527,12 +527,14 @@ ssl = on
 ssl_cert_file = 'server.crt'
 ssl_key_file = 'server.key'
 ssl_ca_file = 'ca.crt'
+log_connections = on
 SSLCONF"
 
 # Replace pg_hba.conf: cert auth for testuser, trust for postgres
 su - postgres -c "cat > $PGCONF/pg_hba.conf << 'HBA'
 local   all             all                                     trust
 hostssl testdb          testuser        127.0.0.1/32            cert
+hostssl testdb          testuser        ::1/128                 cert
 host    all             all             127.0.0.1/32            trust
 host    all             all             ::1/128                 trust
 HBA"
@@ -549,6 +551,10 @@ done
     -sslmode verify-full -sslcert "$CERTDIR/client.crt" -sslkey "$CERTDIR/client.key" -sslrootcert "$CERTDIR/ca.crt" -vv
 ZIP5=$(ls -t radar-*.zip | head -1)
 if ! validate_zip "$ZIP5" "Scenario 5" "yes"; then
+    exit 1
+fi
+if ! grep -qF 'connection authenticated: identity="CN=testuser" method=cert' "$PGDATA"/log/*; then
+    echo -e "${RED}✗ Scenario 5: the server log records no certificate authentication for testuser${NC}"
     exit 1
 fi
 echo -e "${GREEN}✓ Scenario 5 PASSED${NC}"

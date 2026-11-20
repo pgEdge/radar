@@ -54,7 +54,14 @@ jobs:
 
             - name: List integration test scenarios
               id: scenarios
-              run: echo "list=$(./test-radar.sh --list | jq -cnR '[inputs]')" >> "$GITHUB_OUTPUT"
+              shell: bash
+              run: |
+                  list=$(./test-radar.sh --list | jq -cnR '[inputs]')
+                  if [ "$list" = "[]" ]; then
+                      echo "test-radar.sh --list printed no scenarios" >&2
+                      exit 1
+                  fi
+                  echo "list=$list" >> "$GITHUB_OUTPUT"
 
     integration-test:
         name: Integration Test - Scenario ${{ matrix.scenario }}
