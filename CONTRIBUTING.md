@@ -512,7 +512,9 @@ and list the contents of the archive:
 ```bash
 # Build the image, then run each scenario in its own container
 docker build -t radar-test .
-for s in $(./test-radar.sh --list); do docker run --rm radar-test "$s"; done
+for s in $(./test-radar.sh --list); do
+    docker run --rm radar-test ./test-radar.sh "$s"
+done
 
 # Manual testing after build
 ./radar --skip-postgres -v

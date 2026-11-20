@@ -113,7 +113,7 @@ if [ -z "$SCENARIOS" ]; then
 fi
 for scenario in $SCENARIOS; do
     echo "Running integration test container for scenario $scenario..." | tee -a "$LOGFILE"
-    if ! docker run --rm radar-local-test "$scenario" 2>&1 | tee -a "$LOGFILE"; then
+    if ! docker run --rm radar-local-test ./test-radar.sh "$scenario" 2>&1 | tee -a "$LOGFILE"; then
         echo -e "${RED}✗ Integration test scenario $scenario failed${NC}" | tee -a "$LOGFILE"
         exit 1
     fi

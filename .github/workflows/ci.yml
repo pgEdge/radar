@@ -83,7 +83,7 @@ jobs:
             - name: Run integration test container
               env:
                   SCENARIO: ${{ matrix.scenario }}
-              run: docker run --rm radar-local-test "$SCENARIO"
+              run: docker run --rm radar-local-test ./test-radar.sh "$SCENARIO"
 
             - name: Clean up Docker images
               if: always()
