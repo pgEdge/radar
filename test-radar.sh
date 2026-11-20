@@ -342,14 +342,16 @@ validate_zip() {
 
 	# The configuration files live under /etc/postgresql, not in the data
 	# directory. postgresql.conf is world-readable; pg_hba.conf and
-	# pg_ident.conf are readable by root and postgres only.
-	local required="postgresql.conf"
+	# pg_ident.conf are readable by root and postgres only. Every scenario, root
+	# or not, also collects a system command, a PostgreSQL query and a
+	# pg_statviz table.
+	local required="postgresql/postgresql.conf system/hostname.out postgresql/version.tsv pg_statviz/testdb/snapshots.tsv"
 	if [ "$require_system" = "yes" ]; then
-		required="postgresql.conf pg_hba.conf pg_ident.conf"
+		required="$required postgresql/pg_hba.conf postgresql/pg_ident.conf"
 	fi
 	for f in $required; do
-		if ! unzip -l "$zip_file" | grep -q " postgresql/$f\$"; then
-			echo -e "${RED}✗ $scenario FAILED: postgresql/$f missing from archive${NC}"
+		if ! unzip -l "$zip_file" | grep -q " $f\$"; then
+			echo -e "${RED}✗ $scenario FAILED: $f missing from archive${NC}"
 			return 1
 		fi
 	done
