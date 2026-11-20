@@ -512,8 +512,8 @@ numbers, and `./run-ci-local.sh` runs every scenario:
 
 ```bash
 # Build the image and run scenario 1 in its own container
-docker build -t radar-test .
-docker run --rm radar-test ./test-radar.sh 1
+docker build -t radar-test . &&
+    docker run --rm radar-test ./test-radar.sh 1
 
 # Manual testing after build
 ./radar --skip-postgres -v
