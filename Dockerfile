@@ -1,4 +1,4 @@
-FROM debian:latest
+FROM debian:stable
 
 # Install PostgreSQL 18 from official PostgreSQL repository
 RUN apt-get update && apt-get install -y --no-install-recommends \
