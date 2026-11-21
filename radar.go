@@ -31,8 +31,9 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-// version is stamped at build time via -ldflags "-X main.version=<tag>".
-// Release builds set it to e.g. "v0.5.0"; unstamped dev builds report "dev".
+// version is stamped at build time via -ldflags "-X main.version=<version>".
+// Release builds set it to the tag without its leading "v", e.g. "0.5.0";
+// unstamped dev builds report "dev".
 var version = "dev"
 
 // errHelpRequested and errVersionRequested are returned by parseConfig when
