@@ -43,7 +43,7 @@ jobs:
               run: go test -v ./...
 
             - name: Build radar
-              run: CGO_ENABLED=0 go build -ldflags="-s -w" -o radar .
+              run: GOOS=linux CGO_ENABLED=0 go build -ldflags="-s -w" -o radar .
 
             - name: Upload Linux binary
               uses: actions/upload-artifact@v4

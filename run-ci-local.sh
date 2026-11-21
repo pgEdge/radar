@@ -87,7 +87,7 @@ log ""
 # Same command as ci.yml; the binary is what the Dockerfile COPYs, mirroring
 # CI's upload-artifact/download-artifact handoff into the integration jobs.
 echo -e "${YELLOW}Step 4: Building radar binary${NC}" | tee -a "$LOGFILE"
-if ! CGO_ENABLED=0 go build -ldflags="-s -w" -o radar . 2>&1 | tee -a "$LOGFILE"; then
+if ! GOOS=linux CGO_ENABLED=0 go build -ldflags="-s -w" -o radar . 2>&1 | tee -a "$LOGFILE"; then
     echo -e "${RED}✗ Build failed${NC}" | tee -a "$LOGFILE"
     exit 1
 fi
