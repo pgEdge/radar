@@ -35,5 +35,5 @@ WORKDIR /radar
 COPY radar ./radar
 COPY test-radar.sh ./test-radar.sh
 
-# List the scenario numbers by default
-CMD ["./test-radar.sh", "--list"]
+# Default command
+CMD ["./test-radar.sh"]

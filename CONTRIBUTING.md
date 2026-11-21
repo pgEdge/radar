@@ -508,9 +508,8 @@ The script also creates a timestamped log file named `ci-YYYYMMDD-HHMMSS.log`.
 The following commands build radar for Linux and the integration test image,
 which copies that binary in, run one scenario in a Debian container, rebuild
 radar for the local machine, run it without PostgreSQL collection, and list the
-contents of the archive. `./test-radar.sh --list` prints the scenario numbers,
-the image prints them when it runs without a command, and `./run-ci-local.sh`
-runs every scenario:
+contents of the archive. `./test-radar.sh --list` prints the scenario
+numbers, and `./run-ci-local.sh` runs every scenario:
 
 ```bash
 # Build radar for Linux and the image, then run scenario 1 in its own container
