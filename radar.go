@@ -927,6 +927,11 @@ func pgQueryCollector(db *sql.DB, relation, query string) func(*Config, io.Write
 	}
 }
 
+// droppedColumns are result columns that never reach the archive, whichever
+// query returns them. pg_subscription.subconninfo is a connection string that
+// can hold a password.
+var droppedColumns = []string{"subconninfo"}
+
 // rowsToTSV streams SQL rows to TSV format directly to writer
 func rowsToTSV(rows *sql.Rows, w io.Writer) error {
 	// Get column names
@@ -935,14 +940,22 @@ func rowsToTSV(rows *sql.Rows, w io.Writer) error {
 		return fmt.Errorf("getting columns: %w", err)
 	}
 
-	// Write TSV header
+	// The columns that are written, by position
+	var kept []int
 	for i, col := range columns {
-		if i > 0 {
+		if !slices.Contains(droppedColumns, col) {
+			kept = append(kept, i)
+		}
+	}
+
+	// Write TSV header
+	for n, i := range kept {
+		if n > 0 {
 			if _, err := w.Write([]byte{'\t'}); err != nil {
 				return err
 			}
 		}
-		if _, err := io.WriteString(w, col); err != nil {
+		if _, err := io.WriteString(w, columns[i]); err != nil {
 			return err
 		}
 	}
@@ -963,15 +976,15 @@ func rowsToTSV(rows *sql.Rows, w io.Writer) error {
 			return fmt.Errorf("scanning row: %w", err)
 		}
 
-		for i, val := range values {
-			if i > 0 {
+		for n, i := range kept {
+			if n > 0 {
 				if _, err := w.Write([]byte{'\t'}); err != nil {
 					return err
 				}
 			}
 
 			var field []byte
-			switch v := val.(type) {
+			switch v := values[i].(type) {
 			case nil:
 				// NULL → empty string
 				continue

@@ -472,6 +472,20 @@ func TestRowsToTSV(t *testing.T) {
 			expected: "id\tname\n1\tAlice\n2\tBob\n",
 		},
 		{
+			name:    "subscription connection string dropped",
+			columns: []string{"subname", "subconninfo", "subenabled"},
+			addRows: func(r *sqlmock.Rows) *sqlmock.Rows {
+				return r.AddRow("s1", "host=db password=secret", true)
+			},
+			expected: "subname\tsubenabled\ns1\ttrue\n",
+		},
+		{
+			name:     "dropped column first",
+			columns:  []string{"subconninfo", "subname"},
+			addRows:  func(r *sqlmock.Rows) *sqlmock.Rows { return r.AddRow("host=db password=secret", "s1") },
+			expected: "subname\ns1\n",
+		},
+		{
 			name:     "tab escaping",
 			columns:  []string{"value"},
 			addRows:  func(r *sqlmock.Rows) *sqlmock.Rows { return r.AddRow("foo\tbar") },

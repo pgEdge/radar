@@ -92,6 +92,9 @@ su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"CREATE USER pla
 # connecting, so the server logs no refused login
 su - postgres -c "/usr/lib/postgresql/18/bin/createdb noconnect"
 su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"REVOKE CONNECT ON DATABASE noconnect FROM PUBLIC;\""
+# A subscription whose connection string holds a password. connect = false
+# creates it without contacting a publisher.
+su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"CREATE SUBSCRIPTION radar_sub CONNECTION 'host=127.0.0.1 dbname=testdb password=subscription-secret-value' PUBLICATION radar_pub WITH (connect = false);\""
 
 echo ""
 echo "Creating non-root system user..."
@@ -411,6 +414,12 @@ validate_zip() {
 		return 1
 	fi
 
+	# A subscription's connection string must not appear anywhere in the archive.
+	if unzip -p "$zip_file" 2>/dev/null | grep -q "subscription-secret-value"; then
+		echo -e "${RED}✗ $scenario FAILED: a subscription connection string reached the archive${NC}"
+		return 1
+	fi
+
 	if ! validate_server_log "$scenario"; then
 		return 1
 	fi
@@ -437,6 +446,13 @@ if ! validate_zip "$ZIP1" "Scenario 1" "yes"; then
 fi
 if ! unzip -l "$ZIP1" | grep -q " databases/noconnect/"; then
 	echo -e "${RED}✗ Scenario 1 FAILED: the superuser collected nothing from noconnect${NC}"
+	exit 1
+fi
+# The superuser can read pg_subscription: its row is collected without the
+# connection string.
+SUBS1=$(unzip -p "$ZIP1" "postgresql/subscriptions.tsv" 2>/dev/null || true)
+if ! echo "$SUBS1" | tail -n +2 | grep -q "radar_sub" || echo "$SUBS1" | head -1 | grep -qw "subconninfo"; then
+	echo -e "${RED}✗ Scenario 1 FAILED: subscriptions.tsv must list radar_sub and have no subconninfo column${NC}"
 	exit 1
 fi
 echo -e "${GREEN}✓ Scenario 1 PASSED${NC}"
