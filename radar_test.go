@@ -74,6 +74,126 @@ func TestExecCommand(t *testing.T) {
 	}
 }
 
+// TestExecCommandTimeout checks that a command still running at the deadline is
+// stopped and reported, and that the output it had written is kept. The second
+// case leaves a child of the command holding the output pipe open, which must
+// not keep execCommand waiting.
+func TestExecCommandTimeout(t *testing.T) {
+	defer func(d time.Duration) { commandTimeout = d }(commandTimeout)
+	commandTimeout = 300 * time.Millisecond
+
+	for name, script := range map[string]string{
+		"command still running":            "echo started; exec sleep 30",
+		"child keeps the output pipe open": "echo started; sleep 30 & wait",
+	} {
+		t.Run(name, func(t *testing.T) {
+			var buf bytes.Buffer
+			start := time.Now()
+			err := execCommand(&buf, "sh", "-c", script)
+			if elapsed := time.Since(start); elapsed > 5*time.Second {
+				t.Errorf("returned after %s, want it stopped at the deadline", elapsed)
+			}
+			if err == nil || !strings.Contains(err.Error(), "timed out") {
+				t.Errorf("err = %v, want a timeout error", err)
+			}
+			if buf.String() != "started\n" {
+				t.Errorf("wrote %q, want the output written before the deadline", buf.String())
+			}
+		})
+	}
+}
+
+// TestConnectionAttemptTimesOut checks that a server which accepts a connection
+// and then says nothing does not hold radar: the attempt ends at radar's own
+// limit, or at PGCONNECT_TIMEOUT when the operator has set one.
+func TestConnectionAttemptTimesOut(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer closeErrCheck(listener, "probe listener")
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			defer closeErrCheck(conn, "probe connection")
+		}
+	}()
+	cfg := &Config{Host: "127.0.0.1", Port: listener.Addr().(*net.TCPAddr).Port, Username: "postgres", SSLMode: "disable"}
+
+	defer func(n int) { connectTimeoutSeconds = n }(connectTimeoutSeconds)
+	tests := []struct {
+		name  string
+		env   string
+		limit int
+	}{
+		{"radar's limit", "", 1},
+		{"PGCONNECT_TIMEOUT takes precedence", "1", 60},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("PGCONNECT_TIMEOUT", tt.env)
+			connectTimeoutSeconds = tt.limit
+
+			db, err := sql.Open("pgx", cfg.ConnectionString("postgres"))
+			if err != nil {
+				t.Fatalf("open: %v", err)
+			}
+			defer closeErrCheck(db, "probe database")
+
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			start := time.Now()
+			if err := db.PingContext(ctx); err == nil {
+				t.Error("connected to a server that never answers")
+			}
+			if elapsed := time.Since(start); elapsed > 10*time.Second {
+				t.Errorf("the attempt lasted %s, want it ended at the 1 second limit", elapsed)
+			}
+		})
+	}
+}
+
+// TestQueryDeadline checks that a query still running at the deadline is
+// cancelled and reported as timed out, for an instance-level task and for a
+// per-database one.
+func TestQueryDeadline(t *testing.T) {
+	defer func(d time.Duration) { queryTimeout = d }(queryTimeout)
+	queryTimeout = 50 * time.Millisecond
+
+	collectors := map[string]func(*sql.DB, *bytes.Buffer) error{
+		"instance task": func(db *sql.DB, buf *bytes.Buffer) error {
+			return pgQueryCollector(db, "", "SELECT pg_sleep(60)")(&Config{}, buf)
+		},
+		"database task": func(db *sql.DB, buf *bytes.Buffer) error {
+			return (&dbConns{}).exec(&Config{Database: "mydb", DB: db}, "mydb", "", "SELECT pg_sleep(60)", buf)
+		},
+	}
+	for name, collect := range collectors {
+		t.Run(name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatalf("failed to create mock: %v", err)
+			}
+			defer closeErrCheck(db, "mock database")
+			mock.ExpectQuery("pg_sleep").WillDelayFor(10 * time.Second).
+				WillReturnRows(sqlmock.NewRows([]string{"pg_sleep"}).AddRow(""))
+
+			var buf bytes.Buffer
+			start := time.Now()
+			err = collect(db, &buf)
+			if elapsed := time.Since(start); elapsed > 2*time.Second {
+				t.Errorf("returned after %s, want the query cancelled at the deadline", elapsed)
+			}
+			if err == nil || !strings.Contains(err.Error(), "timed out") {
+				t.Errorf("err = %v, want a timeout error", err)
+			}
+		})
+	}
+}
+
 // TestExecCommandNotVirtualized checks that the "none" systemd-detect-virt
 // prints, exiting 1, on a host that is not virtualised is collected as output.
 func TestExecCommandNotVirtualized(t *testing.T) {

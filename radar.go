@@ -13,6 +13,7 @@ package main
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"database/sql"
 	"errors"
 	"flag"
@@ -553,6 +554,11 @@ func (c *Config) ConnectionString(dbname string) string {
 		"sslmode=" + q(c.SSLMode),
 	}
 
+	// pgx applies PGCONNECT_TIMEOUT itself, and a value given here would
+	// override it.
+	if os.Getenv("PGCONNECT_TIMEOUT") == "" {
+		params = append(params, fmt.Sprintf("connect_timeout=%d", connectTimeoutSeconds))
+	}
 	if c.Password != "" {
 		params = append(params, "password="+q(c.Password))
 	}
@@ -684,6 +690,18 @@ func collect(cfg *Config, zipWriter *zip.Writer, tasks []CollectionTask) int {
 	return collected
 }
 
+// commandTimeout is how long a command may run before radar stops it, so that
+// one hung command cannot stall the run.
+var commandTimeout = 30 * time.Second
+
+// queryTimeout is how long a query may run, rows included, before radar
+// cancels it, so that one query waiting on a lock cannot stall the run.
+var queryTimeout = 30 * time.Second
+
+// connectTimeoutSeconds limits each PostgreSQL connection attempt when the
+// operator has not set PGCONNECT_TIMEOUT.
+var connectTimeoutSeconds = 10
+
 // commandHeadSize is how much of a command's output is held back from the
 // archive until the command either succeeds or writes more. A command that
 // fails within it is classified by its error message and leaves no entry.
@@ -725,12 +743,25 @@ func (h *headWriter) flush() error {
 // they arrive in the order the command wrote them.
 func execCommand(w io.Writer, name string, args ...string) error {
 	out := &headWriter{w: w, head: make([]byte, 0, commandHeadSize)}
-	cmd := exec.Command(name, args...)
+	ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, name, args...)
+	// A stopped command can be stuck in the kernel, or leave a child holding
+	// the output pipe open: WaitDelay makes Run return regardless.
+	cmd.WaitDelay = time.Second
 	cmd.Stdout = out
 	cmd.Stderr = out
 	err := cmd.Run()
 	if err == nil {
 		return out.flush()
+	}
+
+	// What the command wrote before the deadline is data, so it is kept.
+	if ctx.Err() != nil {
+		if err := out.flush(); err != nil {
+			return err
+		}
+		return fmt.Errorf("command '%s %v' timed out after %s", name, args, commandTimeout)
 	}
 
 	// The output is in the archive already, so only the failure is left to report.
@@ -842,18 +873,20 @@ func pgQueryCollector(db *sql.DB, relation, query string) func(*Config, io.Write
 		if db == nil {
 			return fmt.Errorf("PostgreSQL not initialized")
 		}
-		if err := skipIfRelationMissing(db, relation); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+		defer cancel()
+		if err := skipIfRelationMissing(ctx, db, relation); err != nil {
 			return err
 		}
-		rows, err := db.Query(query)
+		rows, err := db.QueryContext(ctx, query)
 		if err != nil {
 			if isPGUnavailableError(err) {
 				return NewSkipError(err.Error())
 			}
-			return err
+			return timedOut(ctx, err)
 		}
 		defer closeErrCheck(rows, "query rows")
-		return rowsToTSV(rows, w)
+		return timedOut(ctx, rowsToTSV(rows, w))
 	}
 }
 

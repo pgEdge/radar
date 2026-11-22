@@ -24,6 +24,10 @@ treats as system collectors. When radar cannot connect to PostgreSQL and
 `--skip-system` is set, nothing remains to collect; radar reports the failure
 and writes no archive.
 
+radar stops a command, or cancels a query, that is still running after 30
+seconds. radar then reports an error for that collector and continues with the
+next one; the output or rows that arrived before the limit stay in the archive.
+
 radar prints the archive name and its size in kilobytes when the collection
 finishes:
 

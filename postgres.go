@@ -115,21 +115,23 @@ func collectPGConfigFile(db *sql.DB, cfg *Config, task SimpleConfigFileTask, w i
 // data directory. The location settings need pg_read_all_settings; a role
 // without it supplies --data-dir, which then stands in for the setting.
 func configFilePath(db *sql.DB, cfg *Config, task SimpleConfigFileTask) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+	defer cancel()
 	if task.Setting != "" {
 		var path string
-		err := db.QueryRow("SELECT current_setting($1)", task.Setting).Scan(&path)
+		err := db.QueryRowContext(ctx, "SELECT current_setting($1)", task.Setting).Scan(&path)
 		if err == nil {
 			return path, nil
 		}
 		// 42501 is insufficient_privilege: only a refused setting falls back.
 		var pgErr *pgconn.PgError
 		if cfg.DataDir == "" || !errors.As(err, &pgErr) || pgErr.Code != "42501" {
-			return "", fmt.Errorf("locating %s: %w", task.Filename, err)
+			return "", timedOut(ctx, fmt.Errorf("locating %s: %w", task.Filename, err))
 		}
 	}
 	if cfg.DataDir == "" {
-		if err := db.QueryRow("SELECT current_setting($1)", "data_directory").Scan(&cfg.DataDir); err != nil {
-			return "", fmt.Errorf("detecting data directory: %w", err)
+		if err := db.QueryRowContext(ctx, "SELECT current_setting($1)", "data_directory").Scan(&cfg.DataDir); err != nil {
+			return "", timedOut(ctx, fmt.Errorf("detecting data directory: %w", err))
 		}
 	}
 	return filepath.Join(cfg.DataDir, task.Filename), nil
@@ -143,9 +145,11 @@ func generateDatabaseTasks(db *sql.DB) ([]CollectionTask, io.Closer, error) {
 	}
 
 	// Get list of databases
-	rows, err := db.Query("SELECT datname, has_database_privilege(oid, 'CONNECT') FROM pg_database WHERE datallowconn ORDER BY datname")
+	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+	defer cancel()
+	rows, err := db.QueryContext(ctx, "SELECT datname, has_database_privilege(oid, 'CONNECT') FROM pg_database WHERE datallowconn ORDER BY datname")
 	if err != nil {
-		return nil, nil, fmt.Errorf("querying databases: %w", err)
+		return nil, nil, timedOut(ctx, fmt.Errorf("querying databases: %w", err))
 	}
 	defer closeErrCheck(rows, "database list query rows")
 
@@ -281,38 +285,49 @@ func (c *dbConns) exec(cfg *Config, dbname, relation, query string, w io.Writer)
 	if err != nil {
 		return err
 	}
-	if err := skipIfRelationMissing(db, relation); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+	defer cancel()
+	if err := skipIfRelationMissing(ctx, db, relation); err != nil {
 		return err
 	}
 
-	rows, err := db.Query(query)
+	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
 		if isPGUnavailableError(err) {
 			return NewSkipError(err.Error())
 		}
-		return fmt.Errorf("query failed: %w", err)
+		return timedOut(ctx, fmt.Errorf("query failed: %w", err))
 	}
 	defer closeErrCheck(rows, "query rows")
 
-	return rowsToTSV(rows, w)
+	return timedOut(ctx, rowsToTSV(rows, w))
 }
 
 // skipIfRelationMissing returns a SkipError when relation is set and does not
 // exist in db. to_regclass returns NULL for a missing relation or schema
 // instead of raising an error, so the check itself logs nothing on the server.
-func skipIfRelationMissing(db *sql.DB, relation string) error {
+func skipIfRelationMissing(ctx context.Context, db *sql.DB, relation string) error {
 	if relation == "" {
 		return nil
 	}
 	var exists bool
-	err := db.QueryRow("SELECT to_regclass($1) IS NOT NULL", relation).Scan(&exists)
+	err := db.QueryRowContext(ctx, "SELECT to_regclass($1) IS NOT NULL", relation).Scan(&exists)
 	if err != nil {
-		return fmt.Errorf("looking up %s: %w", relation, err)
+		return timedOut(ctx, fmt.Errorf("looking up %s: %w", relation, err))
 	}
 	if !exists {
 		return NewSkipError("relation not found: " + relation)
 	}
 	return nil
+}
+
+// timedOut returns a timeout error in place of err when the query's deadline
+// has passed, and err otherwise.
+func timedOut(ctx context.Context, err error) error {
+	if err != nil && ctx.Err() != nil {
+		return fmt.Errorf("query timed out after %s", queryTimeout)
+	}
+	return err
 }
 
 // printSummary logs the archive filename, size, and collector count.
