@@ -43,7 +43,9 @@ table describes the exit codes:
 
 A PostgreSQL connection failure during normal collection does not cause radar
 to exit with an error code. Instead, radar continues with system-only
-collection and reports the connection issue to the user.
+collection and reports the connection issue to the user. With `--skip-system`,
+a connection failure leaves nothing to collect, so radar exits with code `4`
+and writes no archive.
 
 ## Setting Up the Development Environment
 

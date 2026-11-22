@@ -568,16 +568,38 @@ func TestWriteDirListingTSVSkipsIrregularEntries(t *testing.T) {
 	}
 }
 
-// TestWriteDirListingTSVUnreadableIsSkip verifies that a directory radar cannot
-// list costs it that one file rather than failing the run. That is the normal
-// case when radar runs as an OS user without rights on the path.
-func TestWriteDirListingTSVUnreadableIsSkip(t *testing.T) {
+// TestWriteDirListingTSVMissingIsSkip verifies that a directory that is not
+// there costs radar that one file rather than failing the run.
+func TestWriteDirListingTSVMissingIsSkip(t *testing.T) {
 	var buf bytes.Buffer
 	err := writeDirListingTSV(filepath.Join(t.TempDir(), "does-not-exist"), &buf)
 
 	var skipErr SkipError
 	if !errors.As(err, &skipErr) {
 		t.Fatalf("err = %v, want SkipError", err)
+	}
+	if buf.Len() != 0 {
+		t.Errorf("wrote %d bytes for a missing directory, want 0", buf.Len())
+	}
+}
+
+// TestWriteDirListingTSVUnreadableIsError pins that a directory radar is
+// refused access to is reported, as an unreadable file is.
+func TestWriteDirListingTSVUnreadableIsError(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can list a directory whatever its mode")
+	}
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	err := writeDirListingTSV(dir, &buf)
+
+	var skipErr SkipError
+	if !errors.Is(err, os.ErrPermission) || errors.As(err, &skipErr) {
+		t.Fatalf("err = %v, want a permission error that is not a SkipError", err)
 	}
 	if buf.Len() != 0 {
 		t.Errorf("wrote %d bytes for an unreadable directory, want 0", buf.Len())

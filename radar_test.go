@@ -48,6 +48,7 @@ func TestExecCommand(t *testing.T) {
 		{"stderr in order with stdout", "sh", []string{"-c", "echo out; echo err >&2; echo out2"}, "out\nerr\nout2\n", ""},
 		{"command not found", "nonexistentcommand12345", nil, "", skip},
 		{"no data", "sh", []string{"-c", "echo 'No such file or directory' >&2; exit 1"}, "", skip},
+		{"systemd not running", "sh", []string{"-c", "echo \"System has not been booted with systemd as init system (PID 1). Can't operate.\" >&2; exit 1"}, "", skip},
 		{"failure before any output is written", "sh", []string{"-c", "echo boom >&2; exit 2"}, "", "boom"},
 		{"failure after output is written", "sh", []string{"-c", fmt.Sprintf("head -c %d /dev/zero; exit 2", 2*commandHeadSize)},
 			strings.Repeat("\x00", 2*commandHeadSize), "exit status 2 (output kept in archive)"},
@@ -1187,6 +1188,40 @@ func TestPGEnvFallbacks(t *testing.T) {
 		}
 		if cfg.Port != 5434 {
 			t.Errorf("expected port 5434, got %d", cfg.Port)
+		}
+	})
+
+	t.Run("invalid PGPORT is a usage error", func(t *testing.T) {
+		t.Setenv("PGPORT", "abc")
+		flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
+		os.Args = []string{"radar", "-d", "testdb"}
+
+		if _, err := parseConfig(); err == nil || !strings.Contains(err.Error(), "invalid PGPORT") {
+			t.Fatalf("parseConfig() error = %v, want an error naming the invalid PGPORT", err)
+		}
+	})
+
+	t.Run("invalid PGPORT is not read when the port flag is set", func(t *testing.T) {
+		t.Setenv("PGPORT", "abc")
+		flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
+		os.Args = []string{"radar", "-d", "testdb", "-p", "5434"}
+
+		cfg, err := parseConfig()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.Port != 5434 {
+			t.Errorf("expected port 5434, got %d", cfg.Port)
+		}
+	})
+
+	t.Run("invalid PGPORT is not read without PostgreSQL collection", func(t *testing.T) {
+		t.Setenv("PGPORT", "abc")
+		flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
+		os.Args = []string{"radar", "--skip-postgres"}
+
+		if _, err := parseConfig(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 

@@ -6,7 +6,8 @@ radar does not fall back to the second directory when the first directory lacks
 a file. When neither directory exists, radar treats PgBouncer as not installed
 and skips these collectors. radar uses a directory named with the
 `--pgbouncer-conf` option as given, and treats a wrong path as a failure rather
-than a skip. These collectors need no database connection, so radar collects
+than a skip. radar reports an error for a configuration directory or file that
+it cannot read. These collectors need no database connection, so radar collects
 the files even when the PostgreSQL instance is unreachable.
 
 radar never collects the contents of `userlist.txt`. The file holds

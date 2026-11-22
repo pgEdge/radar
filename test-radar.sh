@@ -433,6 +433,25 @@ if ! unzip -l "$ZIP1" | grep -q " databases/noconnect/"; then
 	echo -e "${RED}✗ Scenario 1 FAILED: the superuser collected nothing from noconnect${NC}"
 	exit 1
 fi
+# With system collection skipped and PostgreSQL unreachable there is nothing to
+# collect: radar says so, exits 4 and leaves no archive behind.
+NODATA_DIR=$(mktemp -d)
+NODATA_RC=0
+NODATA_OUT=$(cd "$NODATA_DIR" && "$OLDPWD/radar" -skip-system -h localhost -p 5999 -d testdb -U postgres 2>&1) || NODATA_RC=$?
+if [ "$NODATA_RC" -ne 4 ] || ! echo "$NODATA_OUT" | grep -q "Nothing to collect" ||
+	echo "$NODATA_OUT" | grep -q "Continuing with system data collection" || [ -n "$(ls "$NODATA_DIR")" ]; then
+	echo "$NODATA_OUT"
+	echo -e "${RED}✗ Scenario 1 FAILED: --skip-system with PostgreSQL unreachable must exit 4, say there is nothing to collect and leave no archive (exit $NODATA_RC, left: $(ls "$NODATA_DIR"))${NC}"
+	exit 1
+fi
+# An invalid PGPORT is a usage error rather than a silent fall back to 5432.
+USAGE_RC=0
+USAGE_OUT=$(PGPORT=abc ./radar -skip-system -h localhost -d testdb -U postgres 2>&1) || USAGE_RC=$?
+if [ "$USAGE_RC" -ne 1 ] || ! echo "$USAGE_OUT" | grep -q "invalid PGPORT"; then
+	echo "$USAGE_OUT"
+	echo -e "${RED}✗ Scenario 1 FAILED: an invalid PGPORT must be a usage error (exit $USAGE_RC)${NC}"
+	exit 1
+fi
 echo -e "${GREEN}✓ Scenario 1 PASSED${NC}"
 rm -f "$ZIP1"
 }
@@ -453,6 +472,16 @@ if [ "$(echo "$OUT2" | grep -cE '^ERROR: ✗ noconnect/[^:]+: no CONNECT privile
 	echo -e "${RED}✗ Scenario 2 FAILED: radar did not report the missing CONNECT privilege on noconnect exactly once${NC}"
 	exit 1
 fi
+# No systemd runs in this container, so its tools have nothing to report: radar
+# skips them rather than reporting an error for each.
+if ! timedatectl status 2>&1 | grep -q "not been booted with systemd"; then
+	echo -e "${RED}✗ Scenario 2 FAILED: timedatectl did not report that systemd is not running${NC}"
+	exit 1
+fi
+if echo "$OUT2" | grep -q "not been booted with systemd"; then
+	echo -e "${RED}✗ Scenario 2 FAILED: radar reported an error for a systemd tool where systemd is not running${NC}"
+	exit 1
+fi
 echo -e "${GREEN}✓ Scenario 2 PASSED${NC}"
 rm -f "$ZIP2"
 }
@@ -468,8 +497,19 @@ ZIP3=$(su - radaruser -c "ls -t /home/radaruser/radar-*.zip | head -1")
 if ! validate_zip "$ZIP3" "Scenario 3" "no"; then
 	exit 1
 fi
+# A PgBouncer directory this OS user cannot read is reported for both
+# collectors: the unreadable listing as the unreadable file is.
+mkdir -m 0700 /etc/pgbouncer-private
+OUT3=$(su - radaruser -c "cd /home/radaruser && ./radar -skip-postgres -pgbouncer-conf /etc/pgbouncer-private 2>&1") || { echo "$OUT3"; exit 1; }
+for unreadable in "pgbouncer.ini: read failed: open /etc/pgbouncer-private/pgbouncer.ini" "pgbouncer_files: read failed: open /etc/pgbouncer-private"; do
+	if ! echo "$OUT3" | grep -qxF "ERROR: ✗ $unreadable: permission denied"; then
+		echo "$OUT3"
+		echo -e "${RED}✗ Scenario 3 FAILED: radar did not report '$unreadable: permission denied'${NC}"
+		exit 1
+	fi
+done
 echo -e "${GREEN}✓ Scenario 3 PASSED${NC}"
-rm -f "$ZIP3"
+rm -f /home/radaruser/radar-*.zip
 }
 
 # Scenario 4: Non-root + pg_monitor

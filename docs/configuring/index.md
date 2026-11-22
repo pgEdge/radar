@@ -22,7 +22,7 @@ The following table describes the environment variables that radar reads:
 | Variable | Description |
 |----------|-------------|
 | `PGHOST` | Specifies the PostgreSQL host. |
-| `PGPORT` | Specifies the PostgreSQL port. |
+| `PGPORT` | Specifies the PostgreSQL port. radar rejects a value that is not a number. |
 | `PGUSER` | Specifies the PostgreSQL user name. |
 | `PGPASSWORD` | Specifies the PostgreSQL password. |
 | `PGPASSFILE` | Names the password file that the driver reads when no password is supplied; the default is `~/.pgpass`. |

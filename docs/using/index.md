@@ -20,7 +20,9 @@ radar -d mydatabase -U databaseuser --skip-system
 ```
 
 The `--skip-system` option also skips the PgBouncer collectors, which radar
-treats as system collectors.
+treats as system collectors. When radar cannot connect to PostgreSQL and
+`--skip-system` is set, nothing remains to collect; radar reports the failure
+and writes no archive.
 
 radar prints the archive name and its size in kilobytes when the collection
 finishes:

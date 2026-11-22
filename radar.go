@@ -126,7 +126,7 @@ const DefaultCompressionMethod = zip.Deflate
 // Error message patterns for skip detection
 var (
 	ExecutableNotFoundPatterns = []string{"executable file not found", "command not found"}
-	NoDataPatterns             = []string{"No such file or directory", "no match", "doesn't exist"}
+	NoDataPatterns             = []string{"No such file or directory", "no match", "doesn't exist", "not been booted with systemd"}
 )
 
 // Exit codes
@@ -317,6 +317,10 @@ func main() {
 		}
 		if err := initPostgreSQL(cfg); err != nil {
 			errorLog.Printf("Could not connect to PostgreSQL: %v", err)
+			if cfg.SkipSystem {
+				errorLog.Println("Nothing to collect: --skip-system is set and PostgreSQL is unreachable")
+				os.Exit(ExitNoData)
+			}
 			errorLog.Println("Continuing with system data collection only...")
 			cfg.SkipPostgres = true
 		} else {
@@ -433,11 +437,13 @@ func parseConfig() (*Config, error) {
 			portFlagSet = true
 		}
 	})
-	if !portFlagSet {
+	if !portFlagSet && !cfg.SkipPostgres {
 		if pgport := os.Getenv("PGPORT"); pgport != "" {
-			if p, err := strconv.Atoi(pgport); err == nil {
-				cfg.Port = p
+			p, err := strconv.Atoi(pgport)
+			if err != nil {
+				return nil, fmt.Errorf("invalid PGPORT %q: must be a port number", pgport)
 			}
+			cfg.Port = p
 		}
 	}
 
@@ -777,13 +783,14 @@ func copyFile(path string, w io.Writer) error {
 // writeDirListingTSV writes a TSV listing of the regular files in dir: one row
 // per file with its size and modification time. File contents are never read.
 // Directories, symlinks and other irregular entries are left out, having no
-// meaningful size to report. A directory that is absent or unreadable is a skip,
-// which is the normal case when radar runs as an OS user without rights on the
-// path.
+// meaningful size to report. A missing directory is a skip.
 func writeDirListingTSV(dir string, w io.Writer) error {
 	entries, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return NewSkipError(fmt.Sprintf("directory not found: %s", dir))
+	}
 	if err != nil {
-		return NewSkipError(fmt.Sprintf("cannot list %s: %v", dir, err))
+		return fmt.Errorf("read failed: %w", err)
 	}
 
 	if _, err := io.WriteString(w, "directory\tfilename\tsize_bytes\tmodified\n"); err != nil {
