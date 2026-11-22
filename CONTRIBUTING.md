@@ -479,9 +479,9 @@ containers one after another, and GitHub CI runs them as parallel jobs.
 
 The script performs the following steps in order:
 
-1. The script pins the Go toolchain by setting `GOTOOLCHAIN=go1.26.10`, so that
-   the compiler, the standard library, and `gofmt` match CI regardless of the
-   installed Go version.
+1. The script pins the Go toolchain by setting `GOTOOLCHAIN` to the Go version
+   in `go.mod`, so that the compiler, the standard library, and `gofmt` match
+   CI regardless of the installed Go version.
 2. The script checks the code formatting with the `gofmt` of the pinned
    toolchain.
 3. The script lints the code with its own pinned golangci-lint in `.ci-tools/`,

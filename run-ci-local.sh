@@ -5,7 +5,7 @@ set -e
 set -o pipefail
 
 # Tool versions — MUST match .github/workflows/ci.yml
-GO_VERSION="1.26.10"             # ci.yml: actions/setup-go with go-version '1.26'
+GO_VERSION="$(sed -n 's/^go //p' go.mod)"  # ci.yml: actions/setup-go with go-version-file: go.mod
 GOLANGCI_LINT_VERSION="v2.12.2"  # ci.yml: install.sh -b $(go env GOPATH)/bin v2.12.2
 TOOLDIR=".ci-tools"
 
