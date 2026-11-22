@@ -8,6 +8,7 @@
 # 4. Non-root + pg_monitor
 # 5. Certificate authentication
 # 6. GSSAPI/Kerberos authentication
+# 7. Flags and exit status
 
 set -e
 
@@ -82,6 +83,11 @@ su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"CREATE TABLE pa
 su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"CREATE TABLE part_child PARTITION OF part_parent FOR VALUES FROM ('2020-01-01') TO ('2030-01-01');\""
 su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"CREATE EXTENSION pg_statviz;\""
 su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"SELECT pgstatviz.snapshot();\""
+# For the flags scenario: pgstattuple, whose collector runs only when included,
+# and a role without pg_read_all_settings, which cannot ask the server where
+# the data directory is
+su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"CREATE EXTENSION pgstattuple;\""
+su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"CREATE USER plainuser WITH PASSWORD 'plainpass';\""
 # A database testuser may not connect to, which radar records without
 # connecting, so the server logs no refused login
 su - postgres -c "/usr/lib/postgresql/18/bin/createdb noconnect"
@@ -433,25 +439,6 @@ if ! unzip -l "$ZIP1" | grep -q " databases/noconnect/"; then
 	echo -e "${RED}✗ Scenario 1 FAILED: the superuser collected nothing from noconnect${NC}"
 	exit 1
 fi
-# With system collection skipped and PostgreSQL unreachable there is nothing to
-# collect: radar says so, exits 4 and leaves no archive behind.
-NODATA_DIR=$(mktemp -d)
-NODATA_RC=0
-NODATA_OUT=$(cd "$NODATA_DIR" && "$OLDPWD/radar" -skip-system -h localhost -p 5999 -d testdb -U postgres 2>&1) || NODATA_RC=$?
-if [ "$NODATA_RC" -ne 4 ] || ! echo "$NODATA_OUT" | grep -q "Nothing to collect" ||
-	echo "$NODATA_OUT" | grep -q "Continuing with system data collection" || [ -n "$(ls "$NODATA_DIR")" ]; then
-	echo "$NODATA_OUT"
-	echo -e "${RED}✗ Scenario 1 FAILED: --skip-system with PostgreSQL unreachable must exit 4, say there is nothing to collect and leave no archive (exit $NODATA_RC, left: $(ls "$NODATA_DIR"))${NC}"
-	exit 1
-fi
-# An invalid PGPORT is a usage error rather than a silent fall back to 5432.
-USAGE_RC=0
-USAGE_OUT=$(PGPORT=abc ./radar -skip-system -h localhost -d testdb -U postgres 2>&1) || USAGE_RC=$?
-if [ "$USAGE_RC" -ne 1 ] || ! echo "$USAGE_OUT" | grep -q "invalid PGPORT"; then
-	echo "$USAGE_OUT"
-	echo -e "${RED}✗ Scenario 1 FAILED: an invalid PGPORT must be a usage error (exit $USAGE_RC)${NC}"
-	exit 1
-fi
 echo -e "${GREEN}✓ Scenario 1 PASSED${NC}"
 rm -f "$ZIP1"
 }
@@ -508,6 +495,12 @@ for unreadable in "pgbouncer.ini: read failed: open /etc/pgbouncer-private/pgbou
 		exit 1
 	fi
 done
+# That run skipped PostgreSQL: its archive has system entries and no others.
+ZIP3B=$(ls -t /home/radaruser/radar-*.zip | head -1)
+if ! unzip -Z1 "$ZIP3B" | grep -q "^system/" || unzip -Z1 "$ZIP3B" | grep -qE "^(postgresql|databases)/"; then
+	echo -e "${RED}✗ Scenario 3 FAILED: --skip-postgres must collect system entries and no PostgreSQL ones${NC}"
+	exit 1
+fi
 echo -e "${GREEN}✓ Scenario 3 PASSED${NC}"
 rm -f /home/radaruser/radar-*.zip
 }
@@ -690,6 +683,84 @@ if ! grep -qE 'connection authenticated: identity="testuser(@[^"]*)?" method=gss
 fi
 echo -e "${GREEN}✓ Scenario 6 PASSED${NC}"
 rm -f "$ZIP6"
+}
+
+# Scenario 7: Flags and exit status
+scenario_7() {
+echo ""
+echo "========================================"
+echo -e "${YELLOW}Scenario 7: Flags and exit status${NC}"
+echo "========================================"
+local dir out rc zip
+dir=$(mktemp -d)
+cp radar "$dir/"
+cd "$dir"
+
+# run runs radar with the given arguments and leaves its output in out, its
+# exit status in rc and the archive it wrote, if any, in zip.
+run() {
+	rm -f radar-*.zip
+	rc=0
+	out=$(./radar "$@" 2>&1) || rc=$?
+	zip=$(ls radar-*.zip 2>/dev/null || true)
+}
+# fail prints what the last run printed and why the scenario fails.
+fail() {
+	echo "$out"
+	echo -e "${RED}✗ Scenario 7 FAILED: $1 (exit $rc, archive: ${zip:-none})${NC}"
+	exit 1
+}
+# has is true when the archive has an entry at exactly this path, and has_under
+# when it has any entry under this directory.
+has() { [ -n "$zip" ] && unzip -Z1 "$zip" | grep -qxF -- "$1"; }
+has_under() { [ -n "$zip" ] && unzip -Z1 "$zip" | grep -q "^$1/"; }
+
+# --skip-system: PostgreSQL entries only. pgstattuple stays off by default.
+run -skip-system -h localhost -d testdb -U postgres
+[ "$rc" -eq 0 ] && has postgresql/version.tsv || fail "--skip-system must exit 0 and collect postgresql/version.tsv"
+if has_under system || has_under pgbouncer; then fail "--skip-system collected system or PgBouncer entries"; fi
+has databases/testdb/bloat.tsv && has postgresql/stat_ssl.tsv || fail "bloat.tsv and stat_ssl.tsv must be collected by default"
+if has databases/testdb/pgstattuple.tsv; then fail "pgstattuple was collected without --include"; fi
+
+# --exclude drops the named collectors and nothing else.
+run -skip-system -h localhost -d testdb -U postgres -exclude bloat,stat_ssl
+[ "$rc" -eq 0 ] && has postgresql/version.tsv && has databases/testdb/tables.tsv || fail "--exclude dropped a collector it was not given"
+if has databases/testdb/bloat.tsv || has postgresql/stat_ssl.tsv; then fail "--exclude bloat,stat_ssl still collected one of them"; fi
+
+# --include turns on a collector that is off by default.
+run -skip-system -h localhost -d testdb -U postgres -include pgstattuple
+[ "$rc" -eq 0 ] && has databases/testdb/pgstattuple.tsv || fail "--include pgstattuple did not collect pgstattuple.tsv"
+
+# --data-dir stands in for the data_directory setting when the role may not
+# read it.
+PGPASSWORD=plainpass run -skip-system -h localhost -d testdb -U plainuser
+[ "$rc" -eq 0 ] && [ -n "$zip" ] || fail "a role without pg_read_all_settings must still get an archive"
+if has postgresql/postgresql.auto.conf; then fail "postgresql.auto.conf was collected without --data-dir by a role that cannot read data_directory"; fi
+PGPASSWORD=plainpass run -skip-system -h localhost -d testdb -U plainuser -data-dir /var/lib/postgresql/18/main
+[ "$rc" -eq 0 ] && has postgresql/postgresql.auto.conf || fail "--data-dir did not collect postgresql.auto.conf"
+
+# A command line that cannot be parsed exits 64, and an invalid or missing
+# argument exits 3.
+run --nosuchflag
+[ "$rc" -eq 64 ] || fail "an option radar does not have must exit 64"
+run -skip-system -skip-postgres
+[ "$rc" -eq 3 ] || fail "both skip options together must exit 3"
+PGPORT=abc run -skip-system -h localhost -d testdb -U postgres
+[ "$rc" -eq 3 ] && echo "$out" | grep -q "invalid PGPORT" || fail "an invalid PGPORT must exit 3 and name the variable"
+
+# PostgreSQL unreachable exits 69. With system collection skipped there is
+# nothing to collect, so radar says so and leaves no archive behind.
+run -skip-system -h localhost -p 5999 -d testdb -U postgres
+[ "$rc" -eq 69 ] && [ -z "$zip" ] && echo "$out" | grep -q "Nothing to collect" || fail "--skip-system with PostgreSQL unreachable must exit 69, say there is nothing to collect and leave no archive"
+if echo "$out" | grep -q "Continuing with system data collection"; then fail "--skip-system with PostgreSQL unreachable must not announce system collection"; fi
+
+# Without --skip-system the system data is still collected, and the exit status
+# says that the PostgreSQL data is missing.
+run -h localhost -p 5999 -d testdb -U postgres
+[ "$rc" -eq 69 ] && has_under system || fail "an unreachable PostgreSQL must exit 69 and still collect system entries"
+if has_under postgresql || has_under databases; then fail "PostgreSQL entries were collected from an unreachable PostgreSQL"; fi
+
+echo -e "${GREEN}✓ Scenario 7 PASSED${NC}"
 }
 
 "scenario_$SCENARIO"

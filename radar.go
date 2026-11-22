@@ -45,6 +45,10 @@ var (
 	errVersionRequested = errors.New("version requested")
 )
 
+// errCommandLine is returned by parseConfig when the flag package rejects the
+// command line. The flag package has by then printed the reason and the usage.
+var errCommandLine = errors.New("the command line cannot be parsed")
+
 // printUsage writes the help text: the usage line, the global options, then
 // the collection options from the registered flag set. It carries nothing
 // build-dependent, because it is pasted verbatim into README.md and
@@ -132,9 +136,17 @@ var (
 
 // Exit codes
 const (
-	ExitUsageError   = 1
-	ExitCollectError = 3
-	ExitNoData       = 4
+	// ExitError is a failure that none of the other codes describes: the
+	// archive cannot be created or closed.
+	ExitError = 1
+	// ExitInvalidArg is an argument that is invalid or missing.
+	ExitInvalidArg = 3
+	// ExitNoData is a run that collected nothing.
+	ExitNoData = 4
+	// ExitUsage is a command line that cannot be parsed.
+	ExitUsage = 64
+	// ExitUnavailable is a PostgreSQL instance that cannot be reached.
+	ExitUnavailable = 69
 )
 
 // Config holds connection parameters and collection settings
@@ -284,18 +296,26 @@ var (
 
 // main is the radar entry point.
 func main() {
+	os.Exit(run())
+}
+
+// run collects one archive and returns radar's exit status. It returns rather
+// than exits, so that the deferred closes run on every path.
+func run() int {
 	cfg, err := parseConfig()
 	switch {
 	case errors.Is(err, errHelpRequested):
 		printUsage(os.Stdout)
-		return
+		return 0
 	case errors.Is(err, errVersionRequested):
 		fmt.Printf("radar version %s\n", version)
-		return
+		return 0
+	case errors.Is(err, errCommandLine):
+		return ExitUsage
 	case err != nil:
 		errorLog.Println(err)
 		flag.Usage()
-		os.Exit(ExitUsageError)
+		return ExitInvalidArg
 	}
 
 	// Generate output filename
@@ -312,6 +332,7 @@ func main() {
 	}
 
 	// Connect to PostgreSQL if not skipped
+	pgUnavailable := false
 	if !cfg.SkipPostgres {
 		if cfg.Verbose {
 			infoLog.Printf("Connecting to PostgreSQL at %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
@@ -320,10 +341,11 @@ func main() {
 			errorLog.Printf("Could not connect to PostgreSQL: %v", err)
 			if cfg.SkipSystem {
 				errorLog.Println("Nothing to collect: --skip-system is set and PostgreSQL is unreachable")
-				os.Exit(ExitNoData)
+				return ExitUnavailable
 			}
 			errorLog.Println("Continuing with system data collection only...")
 			cfg.SkipPostgres = true
+			pgUnavailable = true
 		} else {
 			defer closeErrCheck(cfg.DB, "database connection")
 			if cfg.Verbose {
@@ -339,7 +361,7 @@ func main() {
 	outFile, err := os.OpenFile(outputFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		errorLog.Printf("Failed to create output file: %v", err)
-		os.Exit(ExitCollectError)
+		return ExitError
 	}
 	defer closeErrCheck(outFile, "output file")
 
@@ -360,16 +382,20 @@ func main() {
 	// Close ZIP writer
 	if err := zipWriter.Close(); err != nil {
 		errorLog.Printf("Failed to close archive: %v", err)
-		os.Exit(ExitCollectError)
+		return ExitError
 	}
 
 	if totalCollected == 0 {
 		errorLog.Println("No data collected - this may indicate a problem")
-		os.Exit(ExitNoData)
+		return ExitNoData
 	}
 
 	// Print summary
 	printSummary(totalCollected, outputFile, cfg)
+	if pgUnavailable {
+		return ExitUnavailable
+	}
+	return 0
 }
 
 // parseConfig parses command-line flags into a Config.
@@ -406,7 +432,10 @@ func parseConfig() (*Config, error) {
 		return nil, errVersionRequested
 	}
 
-	flag.Parse()
+	flag.CommandLine.Init(os.Args[0], flag.ContinueOnError)
+	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
+		return nil, errCommandLine
+	}
 
 	for _, raw := range strings.Split(excludeRaw, ",") {
 		if t := strings.TrimSpace(raw); t != "" {

@@ -194,6 +194,41 @@ func TestQueryDeadline(t *testing.T) {
 	}
 }
 
+// TestParseConfigCommandLineError checks that a command line the flag package
+// rejects is told apart from an argument radar itself finds invalid.
+func TestParseConfigCommandLineError(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	for _, args := range [][]string{{"radar", "--nosuchflag"}, {"radar", "-p", "abc"}} {
+		flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
+		flag.CommandLine.SetOutput(io.Discard)
+		os.Args = args
+		if _, err := parseConfig(); !errors.Is(err, errCommandLine) {
+			t.Errorf("parseConfig() with %v: error = %v, want errCommandLine", args[1:], err)
+		}
+	}
+
+	flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
+	os.Args = []string{"radar", "-d", "testdb", "-sslmode", "bogus"}
+	if _, err := parseConfig(); err == nil || errors.Is(err, errCommandLine) {
+		t.Errorf("parseConfig() with an invalid sslmode: error = %v, want an invalid argument error", err)
+	}
+}
+
+// TestFilterTasks checks the partition into the tasks that run and the names of
+// those that -exclude or the default-disabled set leaves out.
+func TestFilterTasks(t *testing.T) {
+	tasks := []CollectionTask{{Name: "version"}, {Name: "mydb/bloat"}, {Name: "mydb/pgstattuple"}}
+	runnable, skipped := filterTasks(tasks, &Config{Exclude: []string{"bloat"}})
+	if len(runnable) != 1 || runnable[0].Name != "version" {
+		t.Errorf("runnable = %v, want only version", runnable)
+	}
+	if got := strings.Join(skipped, ","); got != "mydb/bloat,mydb/pgstattuple" {
+		t.Errorf("skipped = %q, want mydb/bloat,mydb/pgstattuple", got)
+	}
+}
+
 // TestExecCommandNotVirtualized checks that the "none" systemd-detect-virt
 // prints, exiting 1, on a host that is not virtualised is collected as output.
 func TestExecCommandNotVirtualized(t *testing.T) {
