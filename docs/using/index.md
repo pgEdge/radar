@@ -102,3 +102,24 @@ The following command skips the `bloat` and `stat_ssl` collectors:
 ```bash
 radar -d mydatabase -U databaseuser --exclude bloat,stat_ssl
 ```
+
+## Interpreting Exit Codes
+
+radar returns an exit code that indicates the result of each run. The following
+table describes the exit codes:
+
+| Exit Code | Meaning |
+|-----------|---------|
+| `0` | The run succeeded. |
+| `4` | radar collected no data. |
+| `64` | The command line is incorrect: radar cannot parse it, such as an unknown option, or an argument is invalid or missing, such as an unsupported SSL mode. |
+| `69` | radar cannot connect to PostgreSQL. |
+| `73` | radar cannot create the archive. |
+| `74` | radar cannot finish writing the archive. |
+
+The codes from `64` to `74` have the meanings that `sysexits.h` gives them.
+
+When radar cannot connect to PostgreSQL, radar continues with system-only
+collection, writes the archive, and exits with code `69`. With `--skip-system`,
+a connection failure leaves nothing to collect, so radar exits with code `69`
+and writes no archive.

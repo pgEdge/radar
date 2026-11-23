@@ -103,15 +103,15 @@ func TestExecCommandTimeout(t *testing.T) {
 	}
 }
 
-// TestConnectionAttemptTimesOut checks that a server which accepts a connection
-// and then says nothing does not hold radar: the attempt ends at radar's own
-// limit, or at PGCONNECT_TIMEOUT when the operator has set one.
-func TestConnectionAttemptTimesOut(t *testing.T) {
+// silentServer listens on a local port, accepts every connection and never
+// answers. It returns the port.
+func silentServer(t *testing.T) int {
+	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
-	defer closeErrCheck(listener, "probe listener")
+	t.Cleanup(func() { closeErrCheck(listener, "probe listener") })
 	go func() {
 		for {
 			conn, err := listener.Accept()
@@ -121,7 +121,14 @@ func TestConnectionAttemptTimesOut(t *testing.T) {
 			defer closeErrCheck(conn, "probe connection")
 		}
 	}()
-	cfg := &Config{Host: "127.0.0.1", Port: listener.Addr().(*net.TCPAddr).Port, Username: "postgres", SSLMode: "disable"}
+	return listener.Addr().(*net.TCPAddr).Port
+}
+
+// TestConnectionAttemptTimesOut checks that a server which accepts a connection
+// and then says nothing does not hold radar: the attempt ends at radar's own
+// limit, or at PGCONNECT_TIMEOUT when the operator has set one.
+func TestConnectionAttemptTimesOut(t *testing.T) {
+	cfg := &Config{Host: "127.0.0.1", Port: silentServer(t), Username: "postgres", SSLMode: "disable"}
 
 	defer func(n int) { connectTimeoutSeconds = n }(connectTimeoutSeconds)
 	tests := []struct {
@@ -205,6 +212,30 @@ func TestInitPostgreSQLPingDeadline(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("the ping is still waiting after 10 seconds, want it ended at the query deadline")
+	}
+}
+
+// TestDBConnsConnDeadline checks that a database whose server accepts the
+// connection and then never answers does not hold radar: the attempt ends at
+// the query deadline, even when PGCONNECT_TIMEOUT allows longer.
+func TestDBConnsConnDeadline(t *testing.T) {
+	t.Setenv("PGCONNECT_TIMEOUT", "60")
+	defer func(d time.Duration) { queryTimeout = d }(queryTimeout)
+	queryTimeout = 200 * time.Millisecond
+	cfg := &Config{Host: "127.0.0.1", Port: silentServer(t), Database: "db", Username: "user", SSLMode: "disable"}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := (&dbConns{}).conn(cfg, "otherdb")
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Error("connected to a server that never answers")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the connection attempt is still waiting after 10 seconds, want it ended at the query deadline")
 	}
 }
 
@@ -1434,6 +1465,22 @@ func TestPGEnvFallbacks(t *testing.T) {
 			t.Fatalf("parseConfig() error = %v, want an error naming the invalid PGPORT", err)
 		}
 	})
+
+	for _, port := range []string{"0", "-1", "65536"} {
+		for source, args := range map[string][]string{"PGPORT": {"radar", "-d", "testdb"}, "-p": {"radar", "-d", "testdb", "-p", port}} {
+			t.Run(source+" "+port+" is out of range", func(t *testing.T) {
+				if source == "PGPORT" {
+					t.Setenv("PGPORT", port)
+				}
+				flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
+				os.Args = args
+
+				if _, err := parseConfig(); err == nil || !strings.Contains(err.Error(), "invalid port "+port) {
+					t.Fatalf("parseConfig() error = %v, want an error naming the invalid port", err)
+				}
+			})
+		}
+	}
 
 	t.Run("invalid PGPORT is not read when the port flag is set", func(t *testing.T) {
 		t.Setenv("PGPORT", "abc")

@@ -31,22 +31,9 @@ radar is built on the following core principles:
 
 ## Interpreting Exit Codes
 
-radar returns an exit code that indicates the result of each run. The following
-table describes the exit codes:
-
-| Exit Code | Meaning |
-|-----------|---------|
-| `0` | The run succeeded. |
-| `1` | A general error occurred, such as an archive that radar cannot create. |
-| `3` | An argument is invalid or missing, such as an unsupported SSL mode. |
-| `4` | radar collected no data. |
-| `64` | radar cannot parse the command line, such as an unknown option. |
-| `69` | radar cannot connect to PostgreSQL. |
-
-When radar cannot connect to PostgreSQL, radar continues with system-only
-collection, writes the archive, and exits with code `69`. With `--skip-system`,
-a connection failure leaves nothing to collect, so radar exits with code `69`
-and writes no archive.
+radar returns an exit code that indicates the result of each run. The
+[exit code table](docs/using/index.md#interpreting-exit-codes) in the user
+documentation describes each code.
 
 ## Setting Up the Development Environment
 
@@ -549,7 +536,7 @@ that the scenario expects:
 | S4 | Non-root and PostgreSQL pg_monitor role | radar runs as a non-root user with monitoring-level PostgreSQL access through the pg_monitor role. This scenario combines the limitations of both non-root and pg_monitor, and is the most restricted. | About 68 system collectors, about 47 PostgreSQL collectors, and pg_statviz data. |
 | S5 | Certificate authentication | radar runs as root and connects as the pg_monitor role with a client certificate over TLS. This scenario exercises `--sslmode verify-full` with `--sslcert`, `--sslkey` and `--sslrootcert`. | About 71 system collectors, about 51 PostgreSQL collectors, and pg_statviz data. |
 | S6 | GSSAPI/Kerberos authentication | radar runs as root and connects as the pg_monitor role with a Kerberos ticket from `kinit`. `pg_hba.conf` requires GSSAPI authentication for every TCP connection by that role, and the scenario checks that the server log records `method=gss`. | About 71 system collectors, about 51 PostgreSQL collectors, and pg_statviz data. |
-| S7 | Options and exit codes | radar runs as root with the PostgreSQL superuser, once for each of the `--skip-system`, `--exclude`, `--include` and `--data-dir` options, and then with an invalid command line and with an unreachable PostgreSQL instance. | Each run collects only what its options select, and each failure returns its documented exit code. |
+| S7 | Options and exit codes | radar runs as root with the PostgreSQL superuser, once for each of the `--skip-system`, `--exclude`, `--include` and `--data-dir` options, and then with an invalid command line, with an archive that radar cannot create, and with an unreachable PostgreSQL instance. | Each run collects only what its options select, and each failure returns its documented exit code. |
 
 Scenarios S1 to S6 verify that radar collects the required data and handles the
 permission limitations of each scenario.

@@ -255,7 +255,9 @@ func (c *dbConns) conn(cfg *Config, dbname string) (*sql.DB, error) {
 	// Connect here rather than leaving it to the first query. A database that
 	// allows connections but refuses this user then costs one rejected login
 	// instead of one per task, since c.err makes the rest of them skip.
-	pooled, err := db.Conn(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+	defer cancel()
+	pooled, err := db.Conn(ctx)
 	if err != nil {
 		closeErrCheck(db, "database connection")
 		c.err = fmt.Errorf("connecting to %s: %w", dbname, err)

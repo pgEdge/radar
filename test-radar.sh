@@ -740,14 +740,21 @@ if has postgresql/postgresql.auto.conf; then fail "postgresql.auto.conf was coll
 PGPASSWORD=plainpass run -skip-system -h localhost -d testdb -U plainuser -data-dir /var/lib/postgresql/18/main
 [ "$rc" -eq 0 ] && has postgresql/postgresql.auto.conf || fail "--data-dir did not collect postgresql.auto.conf"
 
-# A command line that cannot be parsed exits 64, and an invalid or missing
-# argument exits 3.
+# A command line that cannot be parsed, and an invalid or missing argument,
+# exit 64.
 run --nosuchflag
 [ "$rc" -eq 64 ] || fail "an option radar does not have must exit 64"
 run -skip-system -skip-postgres
-[ "$rc" -eq 3 ] || fail "both skip options together must exit 3"
+[ "$rc" -eq 64 ] || fail "both skip options together must exit 64"
 PGPORT=abc run -skip-system -h localhost -d testdb -U postgres
-[ "$rc" -eq 3 ] && echo "$out" | grep -q "invalid PGPORT" || fail "an invalid PGPORT must exit 3 and name the variable"
+[ "$rc" -eq 64 ] && echo "$out" | grep -q "invalid PGPORT" || fail "an invalid PGPORT must exit 64 and name the variable"
+run -skip-system -h localhost -p 65536 -d testdb -U postgres
+[ "$rc" -eq 64 ] && echo "$out" | grep -q "invalid port 65536" || fail "a port out of range must exit 64 and name the port"
+
+# An archive that cannot be created exits 73. radaruser cannot write to /.
+rc=0 zip=
+out=$(su - radaruser -c "cd / && /home/radaruser/radar -skip-postgres" 2>&1) || rc=$?
+[ "$rc" -eq 73 ] || fail "an archive that cannot be created must exit 73"
 
 # PostgreSQL unreachable exits 69. With system collection skipped there is
 # nothing to collect, so radar says so and leaves no archive behind.

@@ -134,19 +134,20 @@ var (
 	NoDataPatterns             = []string{"No such file or directory", "no match", "doesn't exist", "not been booted with systemd"}
 )
 
-// Exit codes
+// Exit codes. Each is the sysexits.h code for its case, except ExitNoData,
+// which sysexits.h has no code for.
 const (
-	// ExitError is a failure that none of the other codes describes: the
-	// archive cannot be created or closed.
-	ExitError = 1
-	// ExitInvalidArg is an argument that is invalid or missing.
-	ExitInvalidArg = 3
 	// ExitNoData is a run that collected nothing.
 	ExitNoData = 4
-	// ExitUsage is a command line that cannot be parsed.
+	// ExitUsage is a command line that cannot be parsed, or an argument that
+	// is invalid or missing.
 	ExitUsage = 64
 	// ExitUnavailable is a PostgreSQL instance that cannot be reached.
 	ExitUnavailable = 69
+	// ExitCantCreate is an archive that cannot be created.
+	ExitCantCreate = 73
+	// ExitIOError is an archive that cannot be closed.
+	ExitIOError = 74
 )
 
 // Config holds connection parameters and collection settings
@@ -315,7 +316,7 @@ func run() int {
 	case err != nil:
 		errorLog.Println(err)
 		flag.Usage()
-		return ExitInvalidArg
+		return ExitUsage
 	}
 
 	// Generate output filename
@@ -361,7 +362,7 @@ func run() int {
 	outFile, err := os.OpenFile(outputFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		errorLog.Printf("Failed to create output file: %v", err)
-		return ExitError
+		return ExitCantCreate
 	}
 	defer closeErrCheck(outFile, "output file")
 
@@ -382,7 +383,7 @@ func run() int {
 	// Close ZIP writer
 	if err := zipWriter.Close(); err != nil {
 		errorLog.Printf("Failed to close archive: %v", err)
-		return ExitError
+		return ExitIOError
 	}
 
 	if totalCollected == 0 {
@@ -475,6 +476,9 @@ func parseConfig() (*Config, error) {
 			}
 			cfg.Port = p
 		}
+	}
+	if !cfg.SkipPostgres && (cfg.Port < 1 || cfg.Port > 65535) {
+		return nil, fmt.Errorf("invalid port %d: must be between 1 and 65535", cfg.Port)
 	}
 
 	if cfg.Username == "" {
