@@ -729,7 +729,7 @@ func execCommand(w io.Writer, name string, args ...string) error {
 
 	// The output is in the archive already, so only the failure is left to report.
 	if out.streaming {
-		return fmt.Errorf("command '%s %v' failed: %w", name, args, err)
+		return fmt.Errorf("command '%s %v' failed: %w (output kept in archive)", name, args, err)
 	}
 
 	if special, ok := handleSpecialCases(name, out.head); ok {
@@ -769,7 +769,7 @@ func copyFile(path string, w io.Writer) error {
 	}
 	defer closeErrCheck(f, path)
 	if _, err := io.Copy(w, f); err != nil {
-		return fmt.Errorf("read failed: %w", err)
+		return fmt.Errorf("copy failed: %w", err)
 	}
 	return nil
 }

@@ -50,7 +50,7 @@ func TestExecCommand(t *testing.T) {
 		{"no data", "sh", []string{"-c", "echo 'No such file or directory' >&2; exit 1"}, "", skip},
 		{"failure before any output is written", "sh", []string{"-c", "echo boom >&2; exit 2"}, "", "boom"},
 		{"failure after output is written", "sh", []string{"-c", fmt.Sprintf("head -c %d /dev/zero; exit 2", 2*commandHeadSize)},
-			strings.Repeat("\x00", 2*commandHeadSize), "exit status 2"},
+			strings.Repeat("\x00", 2*commandHeadSize), "exit status 2 (output kept in archive)"},
 	}
 
 	for _, tt := range tests {
@@ -92,8 +92,8 @@ func TestExecCommandNotVirtualized(t *testing.T) {
 	}
 }
 
-// TestCopyFile checks that copyFile writes a file's contents, and that a
-// missing file is a skip.
+// TestCopyFile checks that copyFile writes a file's contents, that a missing
+// file is a skip, and that a failed copy is an error.
 func TestCopyFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "radar_test.txt")
 	content := "test content\nline 2\n"
@@ -113,22 +113,30 @@ func TestCopyFile(t *testing.T) {
 	if err := copyFile("/nonexistent/file/path/12345", &buf); !errors.As(err, &skipErr) {
 		t.Errorf("want a SkipError for a missing file, got %v", err)
 	}
+
+	if err := copyFile(t.TempDir(), &buf); err == nil || !strings.Contains(err.Error(), "copy failed") {
+		t.Errorf("want a copy failed error for a directory, got %v", err)
+	}
 }
 
-// streamedSize is large enough that a collector holding its output whole
-// allocates many times maxCollectAlloc.
-const streamedSize = 64 << 20
+// baseSize and streamedSize are the two amounts each streaming test collects. A
+// collector holding its output whole allocates many times maxAllocGrowth more
+// for streamedSize than for baseSize.
+const (
+	baseSize     = 1 << 20
+	streamedSize = 64 << 20
+)
 
-// maxCollectAlloc bounds the heap that collect may allocate while it streams
-// streamedSize bytes into the archive. About 0.85 MiB of it is the zip
-// writer's DEFLATE compressor, whose size is fixed.
-const maxCollectAlloc = 1 << 20
+// maxAllocGrowth bounds how much more collect may allocate for streamedSize
+// bytes than for baseSize bytes.
+const maxAllocGrowth = 1 << 20
 
-// collectAlloc runs task through collect into a zip archive on disk. It returns
-// the bytes allocated on the heap meanwhile and the uncompressed size of the
-// entry the task wrote.
-func collectAlloc(t *testing.T, task CollectionTask) (alloc, size uint64) {
+// collectAlloc runs newTask(size) through collect into a zip archive on disk,
+// checks that the entry holds size bytes, and returns the bytes allocated on
+// the heap meanwhile.
+func collectAlloc(t *testing.T, newTask func(size int) CollectionTask, size int) uint64 {
 	t.Helper()
+	task := newTask(size)
 	path := filepath.Join(t.TempDir(), "radar.zip")
 	f, err := os.Create(path)
 	if err != nil {
@@ -136,8 +144,8 @@ func collectAlloc(t *testing.T, task CollectionTask) (alloc, size uint64) {
 	}
 	defer closeErrCheck(f, "archive")
 
-	// Two collections empty the zip package's pool of compressors, so the one
-	// this archive uses is allocated, and counted, inside the measurement.
+	// Two collections empty the zip package's pool of compressors, so every
+	// measurement includes allocating the one its archive uses.
 	runtime.GC()
 	runtime.GC()
 	var before, after runtime.MemStats
@@ -158,53 +166,56 @@ func collectAlloc(t *testing.T, task CollectionTask) (alloc, size uint64) {
 		t.Fatal(err)
 	}
 	defer closeErrCheck(r, "archive reader")
-	alloc, size = after.TotalAlloc-before.TotalAlloc, r.File[0].UncompressedSize64
+	if got := r.File[0].UncompressedSize64; got != uint64(size) {
+		t.Errorf("archive entry holds %d bytes, want %d", got, size)
+	}
+	alloc := after.TotalAlloc - before.TotalAlloc
 	t.Logf("collecting %d bytes allocated %d bytes", size, alloc)
-	return alloc, size
+	return alloc
+}
+
+// assertStreams checks that collect allocates about as much for streamedSize
+// bytes as for baseSize bytes. The fixed cost of a collection is in both
+// measurements, so the difference is the memory that grows with the data.
+func assertStreams(t *testing.T, newTask func(size int) CollectionTask) {
+	t.Helper()
+	base := collectAlloc(t, newTask, baseSize)
+	alloc := collectAlloc(t, newTask, streamedSize)
+	if alloc > base+maxAllocGrowth {
+		t.Errorf("collecting %d bytes allocated %d bytes more than collecting %d bytes, want at most %d more",
+			streamedSize, alloc-base, baseSize, maxAllocGrowth)
+	}
 }
 
 // TestCollectStreamsCommandOutput checks that a command's output flows into the
 // archive through fixed-size buffers rather than being held in memory whole.
 func TestCollectStreamsCommandOutput(t *testing.T) {
-	alloc, size := collectAlloc(t, CollectionTask{
-		Name:        "large_command",
-		ArchivePath: "test/large_command.out",
-		Collector:   execCommandCollector("head", "-c", strconv.Itoa(streamedSize), "/dev/zero"),
+	assertStreams(t, func(size int) CollectionTask {
+		return CollectionTask{
+			Name:        "large_command",
+			ArchivePath: "test/large_command.out",
+			Collector:   execCommandCollector("head", "-c", strconv.Itoa(size), "/dev/zero"),
+		}
 	})
-	if size != streamedSize {
-		t.Errorf("archive entry holds %d bytes, want %d", size, streamedSize)
-	}
-	if alloc > maxCollectAlloc {
-		t.Errorf("collecting %d bytes allocated %d bytes, want at most %d", size, alloc, maxCollectAlloc)
-	}
 }
 
 // TestCollectStreamsFile checks that a file flows into the archive through
 // fixed-size buffers rather than being held in memory whole.
 func TestCollectStreamsFile(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "large_file")
-	f, err := os.Create(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := f.Truncate(streamedSize); err != nil {
-		t.Fatal(err)
-	}
-	if err := f.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	alloc, size := collectAlloc(t, CollectionTask{
-		Name:        "large_file",
-		ArchivePath: "test/large_file.out",
-		Collector:   readFileCollector(path),
+	assertStreams(t, func(size int) CollectionTask {
+		path := filepath.Join(t.TempDir(), "large_file")
+		if err := os.WriteFile(path, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Truncate(path, int64(size)); err != nil {
+			t.Fatal(err)
+		}
+		return CollectionTask{
+			Name:        "large_file",
+			ArchivePath: "test/large_file.out",
+			Collector:   readFileCollector(path),
+		}
 	})
-	if size != streamedSize {
-		t.Errorf("archive entry holds %d bytes, want %d", size, streamedSize)
-	}
-	if alloc > maxCollectAlloc {
-		t.Errorf("collecting %d bytes allocated %d bytes, want at most %d", size, alloc, maxCollectAlloc)
-	}
 }
 
 // Test rowsToTSV with mock data

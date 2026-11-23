@@ -54,6 +54,11 @@ The following table describes the file formats in the archive:
 | `.ini` | The `pgbouncer.ini` file, with the values outside the `[pgbouncer]` section redacted. |
 | `.plist` | A macOS property list, such as the system version. |
 
+An `.out` file can hold the output of a command that failed. When a command
+fails after writing more than 4 KiB of output, radar keeps that output in the
+archive and reports the failure on `stderr`, in a line that begins with
+`ERROR:` and ends with `(output kept in archive)`.
+
 !!! hint
 
     radar streams query results, command output and files directly into the ZIP
