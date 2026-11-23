@@ -156,6 +156,58 @@ func TestConnectionAttemptTimesOut(t *testing.T) {
 	}
 }
 
+// TestInitPostgreSQLPingDeadline checks that a server which completes the login
+// and then never answers does not hold radar: the first ping ends at the query
+// deadline.
+func TestInitPostgreSQLPingDeadline(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeErrCheck(ln, "listener")
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer closeErrCheck(conn, "server connection")
+				be := pgproto3.NewBackend(conn, conn)
+				msg, err := be.ReceiveStartupMessage()
+				if _, ok := msg.(*pgproto3.StartupMessage); err != nil || !ok {
+					return
+				}
+				be.Send(&pgproto3.AuthenticationOk{})
+				be.Send(&pgproto3.ReadyForQuery{TxStatus: 'I'})
+				if be.Flush() != nil {
+					return
+				}
+				for {
+					if _, err := be.Receive(); err != nil {
+						return
+					}
+				}
+			}()
+		}
+	}()
+
+	defer func(d time.Duration) { queryTimeout = d }(queryTimeout)
+	queryTimeout = 200 * time.Millisecond
+	cfg := &Config{Host: "127.0.0.1", Port: ln.Addr().(*net.TCPAddr).Port, Database: "db", Username: "user", SSLMode: "disable"}
+
+	done := make(chan error, 1)
+	go func() { done <- initPostgreSQL(cfg) }()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Error("connected to a server that never answers the ping")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the ping is still waiting after 10 seconds, want it ended at the query deadline")
+	}
+}
+
 // TestQueryDeadline checks that a query still running at the deadline is
 // cancelled and reported as timed out, for an instance-level task and for a
 // per-database one.
@@ -743,6 +795,33 @@ func TestCollectWithFailures(t *testing.T) {
 		}
 		if !strings.Contains(errBuf.String(), "real_error") {
 			t.Errorf("real error should be logged, got: %s", errBuf.String())
+		}
+	})
+
+	t.Run("output written before an error is counted", func(t *testing.T) {
+		var buf bytes.Buffer
+		zipWriter := zip.NewWriter(&buf)
+		defer closeErrCheck(zipWriter, "zip writer")
+
+		var errBuf bytes.Buffer
+		errorLog.SetOutput(&errBuf)
+		defer errorLog.SetOutput(os.Stderr)
+
+		tasks := []CollectionTask{
+			{Category: "test", Name: "timed_out", ArchivePath: "test/partial.out",
+				Collector: func(cfg *Config, w io.Writer) error {
+					if _, err := w.Write([]byte("partial")); err != nil {
+						return err
+					}
+					return errors.New("timed out")
+				}},
+		}
+
+		if collected := collect(&Config{}, zipWriter, tasks); collected != 1 {
+			t.Errorf("expected the entry written before the error to be counted, got %d", collected)
+		}
+		if !strings.Contains(errBuf.String(), "timed_out") {
+			t.Errorf("the error should still be logged, got: %s", errBuf.String())
 		}
 	})
 }

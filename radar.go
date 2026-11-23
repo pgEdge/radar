@@ -611,7 +611,9 @@ func initPostgreSQL(cfg *Config) error {
 		return err
 	}
 
-	if err := db.Ping(); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+	defer cancel()
+	if err := db.PingContext(ctx); err != nil {
 		closeErrCheck(db, "database connection")
 		return err
 	}
@@ -678,8 +680,9 @@ func filterTasks(tasks []CollectionTask, cfg *Config) (runnable []CollectionTask
 	return
 }
 
-// collect executes tasks sequentially and streams directly to ZIP
-// Returns: collected count only
+// collect executes tasks sequentially and streams directly to ZIP. It returns
+// the number of tasks that wrote an archive entry, including those that then
+// failed, because what they wrote stays in the archive.
 func collect(cfg *Config, zipWriter *zip.Writer, tasks []CollectionTask) int {
 	collected := 0
 
@@ -688,6 +691,9 @@ func collect(cfg *Config, zipWriter *zip.Writer, tasks []CollectionTask) int {
 		lazy := &lazyZipWriter{zipWriter: zipWriter, header: archiveHeader(task.ArchivePath)}
 
 		err := task.Collector(cfg, lazy)
+		if lazy.WroteAny() {
+			collected++
+		}
 		if err != nil {
 			var skipErr SkipError
 			if errors.As(err, &skipErr) {
@@ -702,7 +708,6 @@ func collect(cfg *Config, zipWriter *zip.Writer, tasks []CollectionTask) int {
 			continue
 		}
 
-		// Only count if something was actually written
 		if !lazy.WroteAny() {
 			if cfg.VeryVerbose {
 				infoLog.Printf("⊘ %s (empty)", task.Name)
@@ -713,7 +718,6 @@ func collect(cfg *Config, zipWriter *zip.Writer, tasks []CollectionTask) int {
 		if cfg.VeryVerbose {
 			infoLog.Printf("✓ %s", task.Name)
 		}
-		collected++
 	}
 
 	return collected

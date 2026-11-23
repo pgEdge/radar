@@ -484,6 +484,7 @@ ZIP3=$(su - radaruser -c "ls -t /home/radaruser/radar-*.zip | head -1")
 if ! validate_zip "$ZIP3" "Scenario 3" "no"; then
 	exit 1
 fi
+rm -f "$ZIP3"
 # A PgBouncer directory this OS user cannot read is reported for both
 # collectors: the unreadable listing as the unreadable file is.
 mkdir -m 0700 /etc/pgbouncer-private
