@@ -31,19 +31,9 @@ radar is built on the following core principles:
 
 ## Interpreting Exit Codes
 
-radar returns an exit code that indicates the result of each run. The following
-table describes the exit codes:
-
-| Exit Code | Meaning |
-|-----------|---------|
-| `0` | The run succeeded. |
-| `1` | A usage error occurred, such as missing required flags. |
-| `3` | A collection or archive error occurred. |
-| `4` | radar collected no data. |
-
-A PostgreSQL connection failure during normal collection does not cause radar
-to exit with an error code. Instead, radar continues with system-only
-collection and reports the connection issue to the user.
+radar returns an exit code that indicates the result of each run. The
+[exit code table](docs/using/index.md#interpreting-exit-codes) in the user
+documentation describes each code.
 
 ## Setting Up the Development Environment
 
@@ -355,7 +345,7 @@ When you add a collector, meet the following requirements:
 - Update the unit tests in the test file for the collector's area, such as
   `postgres_test.go` or `pgbouncer_test.go`.
 - Update the integration tests if the collector depends on permissions.
-- Test all six integration scenarios, if applicable.
+- Test all seven integration scenarios, if applicable.
 - Ensure that radar silently handles missing tools and permissions.
 
 ## Architecture
@@ -532,10 +522,11 @@ The project uses GitHub Actions for CI/CD. For details, see
 
 ### Reviewing the Integration Test Scenarios
 
-The integration test runs six scenarios: the four permission combinations,
-followed by certificate authentication and Generic Security Service Application
-Program Interface (GSSAPI) authentication. The following table describes each
-scenario and the collection that the scenario expects:
+The integration test runs seven scenarios: the four permission combinations,
+followed by certificate authentication, Generic Security Service Application
+Program Interface (GSSAPI) authentication, and the command-line options with
+the exit codes. The following table describes each scenario and the collection
+that the scenario expects:
 
 | Scenario | Name | Description | Expected Collection |
 |----------|------|-------------|---------------------|
@@ -545,13 +536,14 @@ scenario and the collection that the scenario expects:
 | S4 | Non-root and PostgreSQL pg_monitor role | radar runs as a non-root user with monitoring-level PostgreSQL access through the pg_monitor role. This scenario combines the limitations of both non-root and pg_monitor, and is the most restricted. | About 68 system collectors, about 47 PostgreSQL collectors, and pg_statviz data. |
 | S5 | Certificate authentication | radar runs as root and connects as the pg_monitor role with a client certificate over TLS. This scenario exercises `--sslmode verify-full` with `--sslcert`, `--sslkey` and `--sslrootcert`. | About 71 system collectors, about 51 PostgreSQL collectors, and pg_statviz data. |
 | S6 | GSSAPI/Kerberos authentication | radar runs as root and connects as the pg_monitor role with a Kerberos ticket from `kinit`. `pg_hba.conf` requires GSSAPI authentication for every TCP connection by that role, and the scenario checks that the server log records `method=gss`. | About 71 system collectors, about 51 PostgreSQL collectors, and pg_statviz data. |
+| S7 | Options and exit codes | radar runs as root with the PostgreSQL superuser, once for each of the `--skip-system`, `--exclude`, `--include` and `--data-dir` options, and then with an invalid command line, with an archive that radar cannot create, and with an unreachable PostgreSQL instance. | Each run collects only what its options select, and each failure returns its documented exit code. |
 
-All scenarios verify that radar collects the required data and handles the
+Scenarios S1 to S6 verify that radar collects the required data and handles the
 permission limitations of each scenario.
 
-Each scenario also checks the server log for errors that the radar run caused.
-A query against a missing relation, or a connection to a database on which the
-role lacks the `CONNECT` privilege, fails the scenario.
+Each of those scenarios also checks the server log for errors that the radar
+run caused. A query against a missing relation, or a connection to a database
+on which the role lacks the `CONNECT` privilege, fails the scenario.
 
 ### Comparing Collector Availability by Scenario
 
@@ -671,7 +663,7 @@ A pull request must meet the following requirements:
 - The code must be formatted with `gofmt`.
 - Linting with `golangci-lint` must pass.
 - The unit tests must pass.
-- The integration tests must pass in all six scenarios.
+- The integration tests must pass in all seven scenarios.
 - The documentation must be updated, if applicable.
 
 ## Getting Help

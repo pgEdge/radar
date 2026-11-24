@@ -97,7 +97,8 @@ log ""
 # Step 5: Integration test with Docker
 # Same commands as ci.yml's integration-test job: one container per
 # test-radar.sh scenario (4 permission combinations + certificate auth +
-# GSSAPI/Kerberos), so that no scenario inherits state another left behind.
+# GSSAPI/Kerberos + options and exit codes), so that no scenario inherits state
+# another left behind.
 echo -e "${YELLOW}Step 5: Running integration test with Docker${NC}" | tee -a "$LOGFILE"
 echo "Building Docker image..." | tee -a "$LOGFILE"
 
