@@ -87,7 +87,7 @@ log ""
 # Same command as ci.yml; the binary is what the Dockerfile COPYs, mirroring
 # CI's upload-artifact/download-artifact handoff into the integration jobs.
 echo -e "${YELLOW}Step 4: Building radar binary${NC}" | tee -a "$LOGFILE"
-if ! CGO_ENABLED=0 go build -ldflags="-s -w" -o radar . 2>&1 | tee -a "$LOGFILE"; then
+if ! GOOS=linux CGO_ENABLED=0 go build -ldflags="-s -w" -o radar . 2>&1 | tee -a "$LOGFILE"; then
     echo -e "${RED}✗ Build failed${NC}" | tee -a "$LOGFILE"
     exit 1
 fi
@@ -95,9 +95,9 @@ echo -e "${GREEN}✓ Build successful${NC}" | tee -a "$LOGFILE"
 log ""
 
 # Step 5: Integration test with Docker
-# Covers the same ground as ci.yml's integration-test, cert-auth-test and
-# gssapi-auth-test jobs: test-radar.sh runs all 6 scenarios (4 permission
-# combinations + certificate auth + GSSAPI/Kerberos).
+# Same commands as ci.yml's integration-test job: one container per
+# test-radar.sh scenario (4 permission combinations + certificate auth +
+# GSSAPI/Kerberos), so that no scenario inherits state another left behind.
 echo -e "${YELLOW}Step 5: Running integration test with Docker${NC}" | tee -a "$LOGFILE"
 echo "Building Docker image..." | tee -a "$LOGFILE"
 
@@ -106,11 +106,18 @@ if ! docker build -t radar-local-test . 2>&1 | tee -a "$LOGFILE"; then
     exit 1
 fi
 
-echo "Running integration test container..." | tee -a "$LOGFILE"
-if ! docker run --rm radar-local-test 2>&1 | tee -a "$LOGFILE"; then
-    echo -e "${RED}✗ Integration test failed${NC}" | tee -a "$LOGFILE"
+SCENARIOS=$(./test-radar.sh --list)
+if [ -z "$SCENARIOS" ]; then
+    echo -e "${RED}✗ test-radar.sh --list printed no scenarios${NC}" | tee -a "$LOGFILE"
     exit 1
 fi
+for scenario in $SCENARIOS; do
+    echo "Running integration test container for scenario $scenario..." | tee -a "$LOGFILE"
+    if ! docker run --rm radar-local-test ./test-radar.sh "$scenario" 2>&1 | tee -a "$LOGFILE"; then
+        echo -e "${RED}✗ Integration test scenario $scenario failed${NC}" | tee -a "$LOGFILE"
+        exit 1
+    fi
+done
 
 echo -e "${GREEN}✓ Integration test passed${NC}" | tee -a "$LOGFILE"
 log ""
@@ -125,9 +132,7 @@ log ""
 
 # Report what CI covers that this run did not, so a local pass is not mistaken
 # for a full CI pass.
-echo -e "${YELLOW}Not covered locally (runs in GitHub CI only):${NC}" | tee -a "$LOGFILE"
 if [ "$(uname -s)" != "Darwin" ]; then
+    echo -e "${YELLOW}Not covered locally (runs in GitHub CI only):${NC}" | tee -a "$LOGFILE"
     log "  - macos-test job: macOS build, pg_statviz install, collection and archive verification"
 fi
-log "  - CI runs the 4 permission scenarios in 4 isolated containers; this script"
-log "    runs all 6 scenarios sequentially in one container, sharing a PostgreSQL instance"

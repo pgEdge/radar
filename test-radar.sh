@@ -1,6 +1,7 @@
 #!/bin/bash
 # Test script for radar in a Debian container with PostgreSQL 18
-# Tests all 6 scenarios:
+# Runs one scenario per container, so that no scenario inherits state another
+# left behind. --list prints the scenario numbers:
 # 1. Root + superuser
 # 2. Root + pg_monitor
 # 3. Non-root + superuser
@@ -14,6 +15,20 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
+
+# The scenario numbers, read from the scenario_N functions below
+list_scenarios() {
+	sed -n 's/^scenario_\([0-9][0-9]*\)() {$/\1/p' "$0"
+}
+if [ "$1" = "--list" ]; then
+	list_scenarios
+	exit 0
+fi
+SCENARIO="$1"
+if [[ ! "$SCENARIO" =~ ^[0-9]+$ ]] || ! list_scenarios | grep -qxF "$SCENARIO"; then
+	echo -e "${RED}Usage: $0 --list | <scenario>, one of: $(list_scenarios | tr '\n' ' ')${NC}" >&2
+	exit 1
+fi
 
 # Binary is pre-built by run-ci-local.sh and copied into container by Dockerfile
 echo "Using pre-built radar binary..."
@@ -342,14 +357,16 @@ validate_zip() {
 
 	# The configuration files live under /etc/postgresql, not in the data
 	# directory. postgresql.conf is world-readable; pg_hba.conf and
-	# pg_ident.conf are readable by root and postgres only.
-	local required="postgresql.conf"
+	# pg_ident.conf are readable by root and postgres only. Every scenario, root
+	# or not, also collects a system command, a PostgreSQL query and a
+	# pg_statviz table.
+	local required="postgresql/postgresql.conf system/hostname.out postgresql/version.tsv pg_statviz/testdb/snapshots.tsv"
 	if [ "$require_system" = "yes" ]; then
-		required="postgresql.conf pg_hba.conf pg_ident.conf"
+		required="$required postgresql/pg_hba.conf postgresql/pg_ident.conf"
 	fi
 	for f in $required; do
-		if ! unzip -l "$zip_file" | grep -q " postgresql/$f\$"; then
-			echo -e "${RED}✗ $scenario FAILED: postgresql/$f missing from archive${NC}"
+		if ! unzip -Z1 "$zip_file" | grep -qxF -- "$f"; then
+			echo -e "${RED}✗ $scenario FAILED: $f missing from archive${NC}"
 			return 1
 		fi
 	done
@@ -398,6 +415,7 @@ validate_zip() {
 SERVER_LOG_CHECKED=$(server_log | wc -c)
 
 # Scenario 1: Root + superuser
+scenario_1() {
 echo ""
 echo "========================================"
 echo -e "${YELLOW}Scenario 1: Root + superuser${NC}"
@@ -417,8 +435,10 @@ if ! unzip -l "$ZIP1" | grep -q " databases/noconnect/"; then
 fi
 echo -e "${GREEN}✓ Scenario 1 PASSED${NC}"
 rm -f "$ZIP1"
+}
 
 # Scenario 2: Root + pg_monitor
+scenario_2() {
 echo ""
 echo "========================================"
 echo -e "${YELLOW}Scenario 2: Root + pg_monitor${NC}"
@@ -435,8 +455,10 @@ if [ "$(echo "$OUT2" | grep -cE '^ERROR: ✗ noconnect/[^:]+: no CONNECT privile
 fi
 echo -e "${GREEN}✓ Scenario 2 PASSED${NC}"
 rm -f "$ZIP2"
+}
 
 # Scenario 3: Non-root + superuser
+scenario_3() {
 echo ""
 echo "========================================"
 echo -e "${YELLOW}Scenario 3: Non-root + superuser${NC}"
@@ -448,8 +470,10 @@ if ! validate_zip "$ZIP3" "Scenario 3" "no"; then
 fi
 echo -e "${GREEN}✓ Scenario 3 PASSED${NC}"
 rm -f "$ZIP3"
+}
 
 # Scenario 4: Non-root + pg_monitor
+scenario_4() {
 echo ""
 echo "========================================"
 echo -e "${YELLOW}Scenario 4: Non-root + pg_monitor${NC}"
@@ -461,8 +485,10 @@ if ! validate_zip "$ZIP4" "Scenario 4" "no"; then
 fi
 echo -e "${GREEN}✓ Scenario 4 PASSED${NC}"
 rm -f "$ZIP4"
+}
 
 # Scenario 5: Certificate authentication
+scenario_5() {
 echo ""
 echo "========================================"
 echo -e "${YELLOW}Scenario 5: Certificate authentication${NC}"
@@ -501,12 +527,14 @@ ssl = on
 ssl_cert_file = 'server.crt'
 ssl_key_file = 'server.key'
 ssl_ca_file = 'ca.crt'
+log_connections = on
 SSLCONF"
 
-# Replace pg_hba.conf: cert auth for testuser, trust for postgres (scenarios 1-4 already passed)
+# Replace pg_hba.conf: cert auth for testuser, trust for postgres
 su - postgres -c "cat > $PGCONF/pg_hba.conf << 'HBA'
 local   all             all                                     trust
 hostssl testdb          testuser        127.0.0.1/32            cert
+hostssl testdb          testuser        ::1/128                 cert
 host    all             all             127.0.0.1/32            trust
 host    all             all             ::1/128                 trust
 HBA"
@@ -525,10 +553,16 @@ ZIP5=$(ls -t radar-*.zip | head -1)
 if ! validate_zip "$ZIP5" "Scenario 5" "yes"; then
     exit 1
 fi
+if ! grep -qF 'connection authenticated: identity="CN=testuser" method=cert' "$PGDATA"/log/*; then
+    echo -e "${RED}✗ Scenario 5: the server log records no certificate authentication for testuser${NC}"
+    exit 1
+fi
 echo -e "${GREEN}✓ Scenario 5 PASSED${NC}"
 rm -f "$ZIP5"
+}
 
 # Scenario 6: GSSAPI/Kerberos authentication
+scenario_6() {
 echo ""
 echo "========================================"
 echo -e "${YELLOW}Scenario 6: GSSAPI/Kerberos authentication${NC}"
@@ -586,7 +620,7 @@ su - postgres -c "/usr/lib/postgresql/18/bin/psql -c \"ALTER SYSTEM SET log_conn
 # Add GSSAPI auth and ident map
 # Every testuser connection over TCP must authenticate with GSSAPI: no trust
 # line can match testuser first
-cat > "$PGDATA/pg_hba.conf" << HBA
+cat > "$PGCONF/pg_hba.conf" << HBA
 local   all             all                                     trust
 host    all             testuser        127.0.0.1/32            gss include_realm=0
 host    all             testuser        ::1/128                 gss include_realm=0
@@ -616,10 +650,10 @@ if ! grep -qE 'connection authenticated: identity="testuser(@[^"]*)?" method=gss
 fi
 echo -e "${GREEN}✓ Scenario 6 PASSED${NC}"
 rm -f "$ZIP6"
+}
+
+"scenario_$SCENARIO"
 
 echo ""
 echo "Stopping PostgreSQL..."
 su - postgres -c "/usr/lib/postgresql/18/bin/pg_ctl -D /var/lib/postgresql/18/main stop"
-
-echo ""
-echo -e "${GREEN}All 6 scenarios passed!${NC}"

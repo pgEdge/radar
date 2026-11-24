@@ -50,7 +50,7 @@ default_pool_size = 20
 // them.
 func TestFilterPgBouncerINI(t *testing.T) {
 	var buf bytes.Buffer
-	if err := filterPgBouncerINI([]byte(sampleINI), &buf); err != nil {
+	if err := filterPgBouncerINI(strings.NewReader(sampleINI), &buf); err != nil {
 		t.Fatalf("filterPgBouncerINI: %v", err)
 	}
 	got := buf.String()
@@ -112,7 +112,7 @@ func assertPresent(t *testing.T, got string, items []string) {
 func TestFilterPgBouncerINIRedactsUnknownSections(t *testing.T) {
 	var buf bytes.Buffer
 	ini := "[something_new]\nsecret_key = do-not-ship\n"
-	if err := filterPgBouncerINI([]byte(ini), &buf); err != nil {
+	if err := filterPgBouncerINI(strings.NewReader(ini), &buf); err != nil {
 		t.Fatalf("filterPgBouncerINI: %v", err)
 	}
 
@@ -219,7 +219,7 @@ listen_port = 6432
 # olddb = host=db9.internal password=hash-secret-value
 `
 	var buf bytes.Buffer
-	if err := filterPgBouncerINI([]byte(ini), &buf); err != nil {
+	if err := filterPgBouncerINI(strings.NewReader(ini), &buf); err != nil {
 		t.Fatalf("filterPgBouncerINI: %v", err)
 	}
 	got := buf.String()
