@@ -5,7 +5,7 @@ set -e
 set -o pipefail
 
 # Tool versions — MUST match .github/workflows/ci.yml
-GO_VERSION="1.26.10"             # ci.yml: actions/setup-go with go-version '1.26'
+GO_VERSION="$(sed -n 's/^go //p' go.mod)"  # ci.yml: actions/setup-go with go-version-file: go.mod
 GOLANGCI_LINT_VERSION="v2.12.2"  # ci.yml: install.sh -b $(go env GOPATH)/bin v2.12.2
 TOOLDIR=".ci-tools"
 
@@ -97,7 +97,8 @@ log ""
 # Step 5: Integration test with Docker
 # Same commands as ci.yml's integration-test job: one container per
 # test-radar.sh scenario (4 permission combinations + certificate auth +
-# GSSAPI/Kerberos), so that no scenario inherits state another left behind.
+# GSSAPI/Kerberos + options and exit codes), so that no scenario inherits state
+# another left behind.
 echo -e "${YELLOW}Step 5: Running integration test with Docker${NC}" | tee -a "$LOGFILE"
 echo "Building Docker image..." | tee -a "$LOGFILE"
 

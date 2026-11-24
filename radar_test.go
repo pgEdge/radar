@@ -48,6 +48,7 @@ func TestExecCommand(t *testing.T) {
 		{"stderr in order with stdout", "sh", []string{"-c", "echo out; echo err >&2; echo out2"}, "out\nerr\nout2\n", ""},
 		{"command not found", "nonexistentcommand12345", nil, "", skip},
 		{"no data", "sh", []string{"-c", "echo 'No such file or directory' >&2; exit 1"}, "", skip},
+		{"systemd not running", "sh", []string{"-c", "echo \"System has not been booted with systemd as init system (PID 1). Can't operate.\" >&2; exit 1"}, "", skip},
 		{"failure before any output is written", "sh", []string{"-c", "echo boom >&2; exit 2"}, "", "boom"},
 		{"failure after output is written", "sh", []string{"-c", fmt.Sprintf("head -c %d /dev/zero; exit 2", 2*commandHeadSize)},
 			strings.Repeat("\x00", 2*commandHeadSize), "exit status 2 (output kept in archive)"},
@@ -70,6 +71,244 @@ func TestExecCommand(t *testing.T) {
 				t.Errorf("wrote %q, want %q", buf.String(), tt.want)
 			}
 		})
+	}
+}
+
+// TestExecCommandTimeout checks that a command still running at the deadline is
+// stopped and reported, and that the output it had written is kept. The second
+// case leaves a child of the command holding the output pipe open, which must
+// not keep execCommand waiting.
+func TestExecCommandTimeout(t *testing.T) {
+	defer func(d time.Duration) { commandTimeout = d }(commandTimeout)
+	commandTimeout = 300 * time.Millisecond
+
+	for name, script := range map[string]string{
+		"command still running":            "echo started; exec sleep 30",
+		"child keeps the output pipe open": "echo started; sleep 30 & wait",
+	} {
+		t.Run(name, func(t *testing.T) {
+			var buf bytes.Buffer
+			start := time.Now()
+			err := execCommand(&buf, "sh", "-c", script)
+			if elapsed := time.Since(start); elapsed > 5*time.Second {
+				t.Errorf("returned after %s, want it stopped at the deadline", elapsed)
+			}
+			if err == nil || !strings.Contains(err.Error(), "timed out") {
+				t.Errorf("err = %v, want a timeout error", err)
+			}
+			if buf.String() != "started\n" {
+				t.Errorf("wrote %q, want the output written before the deadline", buf.String())
+			}
+		})
+	}
+}
+
+// silentServer listens on a local port, accepts every connection and never
+// answers. It returns the port.
+func silentServer(t *testing.T) int {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	t.Cleanup(func() { closeErrCheck(listener, "probe listener") })
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			defer closeErrCheck(conn, "probe connection")
+		}
+	}()
+	return listener.Addr().(*net.TCPAddr).Port
+}
+
+// TestConnectionAttemptTimesOut checks that a server which accepts a connection
+// and then says nothing does not hold radar: the attempt ends at radar's own
+// limit, or at PGCONNECT_TIMEOUT when the operator has set one.
+func TestConnectionAttemptTimesOut(t *testing.T) {
+	cfg := &Config{Host: "127.0.0.1", Port: silentServer(t), Username: "postgres", SSLMode: "disable"}
+
+	defer func(n int) { connectTimeoutSeconds = n }(connectTimeoutSeconds)
+	tests := []struct {
+		name  string
+		env   string
+		limit int
+	}{
+		{"radar's limit", "", 1},
+		{"PGCONNECT_TIMEOUT takes precedence", "1", 60},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("PGCONNECT_TIMEOUT", tt.env)
+			connectTimeoutSeconds = tt.limit
+
+			db, err := sql.Open("pgx", cfg.ConnectionString("postgres"))
+			if err != nil {
+				t.Fatalf("open: %v", err)
+			}
+			defer closeErrCheck(db, "probe database")
+
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			start := time.Now()
+			if err := db.PingContext(ctx); err == nil {
+				t.Error("connected to a server that never answers")
+			}
+			if elapsed := time.Since(start); elapsed > 10*time.Second {
+				t.Errorf("the attempt lasted %s, want it ended at the 1 second limit", elapsed)
+			}
+		})
+	}
+}
+
+// TestInitPostgreSQLPingDeadline checks that a server which completes the login
+// and then never answers does not hold radar: the first ping ends at the query
+// deadline.
+func TestInitPostgreSQLPingDeadline(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeErrCheck(ln, "listener")
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer closeErrCheck(conn, "server connection")
+				be := pgproto3.NewBackend(conn, conn)
+				msg, err := be.ReceiveStartupMessage()
+				if _, ok := msg.(*pgproto3.StartupMessage); err != nil || !ok {
+					return
+				}
+				be.Send(&pgproto3.AuthenticationOk{})
+				be.Send(&pgproto3.ReadyForQuery{TxStatus: 'I'})
+				if be.Flush() != nil {
+					return
+				}
+				for {
+					if _, err := be.Receive(); err != nil {
+						return
+					}
+				}
+			}()
+		}
+	}()
+
+	defer func(d time.Duration) { queryTimeout = d }(queryTimeout)
+	queryTimeout = 200 * time.Millisecond
+	cfg := &Config{Host: "127.0.0.1", Port: ln.Addr().(*net.TCPAddr).Port, Database: "db", Username: "user", SSLMode: "disable"}
+
+	done := make(chan error, 1)
+	go func() { done <- initPostgreSQL(cfg) }()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Error("connected to a server that never answers the ping")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the ping is still waiting after 10 seconds, want it ended at the query deadline")
+	}
+}
+
+// TestDBConnsConnDeadline checks that a database whose server accepts the
+// connection and then never answers does not hold radar: the attempt ends at
+// the query deadline, even when PGCONNECT_TIMEOUT allows longer.
+func TestDBConnsConnDeadline(t *testing.T) {
+	t.Setenv("PGCONNECT_TIMEOUT", "60")
+	defer func(d time.Duration) { queryTimeout = d }(queryTimeout)
+	queryTimeout = 200 * time.Millisecond
+	cfg := &Config{Host: "127.0.0.1", Port: silentServer(t), Database: "db", Username: "user", SSLMode: "disable"}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := (&dbConns{}).conn(cfg, "otherdb")
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Error("connected to a server that never answers")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the connection attempt is still waiting after 10 seconds, want it ended at the query deadline")
+	}
+}
+
+// TestQueryDeadline checks that a query still running at the deadline is
+// cancelled and reported as timed out, for an instance-level task and for a
+// per-database one.
+func TestQueryDeadline(t *testing.T) {
+	defer func(d time.Duration) { queryTimeout = d }(queryTimeout)
+	queryTimeout = 50 * time.Millisecond
+
+	collectors := map[string]func(*sql.DB, *bytes.Buffer) error{
+		"instance task": func(db *sql.DB, buf *bytes.Buffer) error {
+			return pgQueryCollector(db, "", "SELECT pg_sleep(60)")(&Config{}, buf)
+		},
+		"database task": func(db *sql.DB, buf *bytes.Buffer) error {
+			return (&dbConns{}).exec(&Config{Database: "mydb", DB: db}, "mydb", "", "SELECT pg_sleep(60)", buf)
+		},
+	}
+	for name, collect := range collectors {
+		t.Run(name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatalf("failed to create mock: %v", err)
+			}
+			defer closeErrCheck(db, "mock database")
+			mock.ExpectQuery("pg_sleep").WillDelayFor(10 * time.Second).
+				WillReturnRows(sqlmock.NewRows([]string{"pg_sleep"}).AddRow(""))
+
+			var buf bytes.Buffer
+			start := time.Now()
+			err = collect(db, &buf)
+			if elapsed := time.Since(start); elapsed > 2*time.Second {
+				t.Errorf("returned after %s, want the query cancelled at the deadline", elapsed)
+			}
+			if err == nil || !strings.Contains(err.Error(), "timed out") {
+				t.Errorf("err = %v, want a timeout error", err)
+			}
+		})
+	}
+}
+
+// TestParseConfigCommandLineError checks that a command line the flag package
+// rejects is told apart from an argument radar itself finds invalid.
+func TestParseConfigCommandLineError(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	for _, args := range [][]string{{"radar", "--nosuchflag"}, {"radar", "-p", "abc"}} {
+		flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
+		flag.CommandLine.SetOutput(io.Discard)
+		os.Args = args
+		if _, err := parseConfig(); !errors.Is(err, errCommandLine) {
+			t.Errorf("parseConfig() with %v: error = %v, want errCommandLine", args[1:], err)
+		}
+	}
+
+	flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
+	os.Args = []string{"radar", "-d", "testdb", "-sslmode", "bogus"}
+	if _, err := parseConfig(); err == nil || errors.Is(err, errCommandLine) {
+		t.Errorf("parseConfig() with an invalid sslmode: error = %v, want an invalid argument error", err)
+	}
+}
+
+// TestFilterTasks checks the partition into the tasks that run and the names of
+// those that -exclude or the default-disabled set leaves out.
+func TestFilterTasks(t *testing.T) {
+	tasks := []CollectionTask{{Name: "version"}, {Name: "mydb/bloat"}, {Name: "mydb/pgstattuple"}}
+	runnable, skipped := filterTasks(tasks, &Config{Exclude: []string{"bloat"}})
+	if len(runnable) != 1 || runnable[0].Name != "version" {
+		t.Errorf("runnable = %v, want only version", runnable)
+	}
+	if got := strings.Join(skipped, ","); got != "mydb/bloat,mydb/pgstattuple" {
+		t.Errorf("skipped = %q, want mydb/bloat,mydb/pgstattuple", got)
 	}
 }
 
@@ -231,6 +470,20 @@ func TestRowsToTSV(t *testing.T) {
 			columns:  []string{"id", "name"},
 			addRows:  func(r *sqlmock.Rows) *sqlmock.Rows { return r.AddRow(1, "Alice").AddRow(2, "Bob") },
 			expected: "id\tname\n1\tAlice\n2\tBob\n",
+		},
+		{
+			name:    "subscription connection string dropped",
+			columns: []string{"subname", "subconninfo", "subenabled"},
+			addRows: func(r *sqlmock.Rows) *sqlmock.Rows {
+				return r.AddRow("s1", "host=db password=secret", true)
+			},
+			expected: "subname\tsubenabled\ns1\ttrue\n",
+		},
+		{
+			name:     "dropped column first",
+			columns:  []string{"subconninfo", "subname"},
+			addRows:  func(r *sqlmock.Rows) *sqlmock.Rows { return r.AddRow("host=db password=secret", "s1") },
+			expected: "subname\ns1\n",
 		},
 		{
 			name:     "tab escaping",
@@ -587,6 +840,33 @@ func TestCollectWithFailures(t *testing.T) {
 		}
 		if !strings.Contains(errBuf.String(), "real_error") {
 			t.Errorf("real error should be logged, got: %s", errBuf.String())
+		}
+	})
+
+	t.Run("output written before an error is counted", func(t *testing.T) {
+		var buf bytes.Buffer
+		zipWriter := zip.NewWriter(&buf)
+		defer closeErrCheck(zipWriter, "zip writer")
+
+		var errBuf bytes.Buffer
+		errorLog.SetOutput(&errBuf)
+		defer errorLog.SetOutput(os.Stderr)
+
+		tasks := []CollectionTask{
+			{Category: "test", Name: "timed_out", ArchivePath: "test/partial.out",
+				Collector: func(cfg *Config, w io.Writer) error {
+					if _, err := w.Write([]byte("partial")); err != nil {
+						return err
+					}
+					return errors.New("timed out")
+				}},
+		}
+
+		if collected := collect(&Config{}, zipWriter, tasks); collected != 1 {
+			t.Errorf("expected the entry written before the error to be counted, got %d", collected)
+		}
+		if !strings.Contains(errBuf.String(), "timed_out") {
+			t.Errorf("the error should still be logged, got: %s", errBuf.String())
 		}
 	})
 }
@@ -1187,6 +1467,56 @@ func TestPGEnvFallbacks(t *testing.T) {
 		}
 		if cfg.Port != 5434 {
 			t.Errorf("expected port 5434, got %d", cfg.Port)
+		}
+	})
+
+	t.Run("invalid PGPORT is a usage error", func(t *testing.T) {
+		t.Setenv("PGPORT", "abc")
+		flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
+		os.Args = []string{"radar", "-d", "testdb"}
+
+		if _, err := parseConfig(); err == nil || !strings.Contains(err.Error(), "invalid PGPORT") {
+			t.Fatalf("parseConfig() error = %v, want an error naming the invalid PGPORT", err)
+		}
+	})
+
+	for _, port := range []string{"0", "-1", "65536"} {
+		for source, args := range map[string][]string{"PGPORT": {"radar", "-d", "testdb"}, "-p": {"radar", "-d", "testdb", "-p", port}} {
+			t.Run(source+" "+port+" is out of range", func(t *testing.T) {
+				if source == "PGPORT" {
+					t.Setenv("PGPORT", port)
+				}
+				flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
+				os.Args = args
+
+				if _, err := parseConfig(); err == nil || !strings.Contains(err.Error(), "invalid port "+port) {
+					t.Fatalf("parseConfig() error = %v, want an error naming the invalid port", err)
+				}
+			})
+		}
+	}
+
+	t.Run("invalid PGPORT is not read when the port flag is set", func(t *testing.T) {
+		t.Setenv("PGPORT", "abc")
+		flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
+		os.Args = []string{"radar", "-d", "testdb", "-p", "5434"}
+
+		cfg, err := parseConfig()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.Port != 5434 {
+			t.Errorf("expected port 5434, got %d", cfg.Port)
+		}
+	})
+
+	t.Run("invalid PGPORT is not read without PostgreSQL collection", func(t *testing.T) {
+		t.Setenv("PGPORT", "abc")
+		flag.CommandLine = flag.NewFlagSet("radar", flag.ContinueOnError)
+		os.Args = []string{"radar", "--skip-postgres"}
+
+		if _, err := parseConfig(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 

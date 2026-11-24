@@ -13,6 +13,7 @@ package main
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"database/sql"
 	"errors"
 	"flag"
@@ -43,6 +44,10 @@ var (
 	errHelpRequested    = errors.New("help requested")
 	errVersionRequested = errors.New("version requested")
 )
+
+// errCommandLine is returned by parseConfig when the flag package rejects the
+// command line. The flag package has by then printed the reason and the usage.
+var errCommandLine = errors.New("the command line cannot be parsed")
 
 // printUsage writes the help text: the usage line, the global options, then
 // the collection options from the registered flag set. It carries nothing
@@ -126,14 +131,23 @@ const DefaultCompressionMethod = zip.Deflate
 // Error message patterns for skip detection
 var (
 	ExecutableNotFoundPatterns = []string{"executable file not found", "command not found"}
-	NoDataPatterns             = []string{"No such file or directory", "no match", "doesn't exist"}
+	NoDataPatterns             = []string{"No such file or directory", "no match", "doesn't exist", "not been booted with systemd"}
 )
 
-// Exit codes
+// Exit codes. Each is the sysexits.h code for its case, except ExitNoData,
+// which sysexits.h has no code for.
 const (
-	ExitUsageError   = 1
-	ExitCollectError = 3
-	ExitNoData       = 4
+	// ExitNoData is a run that collected nothing.
+	ExitNoData = 4
+	// ExitUsage is a command line that cannot be parsed, or an argument that
+	// is invalid or missing.
+	ExitUsage = 64
+	// ExitUnavailable is a PostgreSQL instance that cannot be reached.
+	ExitUnavailable = 69
+	// ExitCantCreate is an archive that cannot be created.
+	ExitCantCreate = 73
+	// ExitIOError is an archive that cannot be closed.
+	ExitIOError = 74
 )
 
 // Config holds connection parameters and collection settings
@@ -283,18 +297,26 @@ var (
 
 // main is the radar entry point.
 func main() {
+	os.Exit(run())
+}
+
+// run collects one archive and returns radar's exit status. It returns rather
+// than exits, so that the deferred closes run on every path.
+func run() int {
 	cfg, err := parseConfig()
 	switch {
 	case errors.Is(err, errHelpRequested):
 		printUsage(os.Stdout)
-		return
+		return 0
 	case errors.Is(err, errVersionRequested):
 		fmt.Printf("radar version %s\n", version)
-		return
+		return 0
+	case errors.Is(err, errCommandLine):
+		return ExitUsage
 	case err != nil:
 		errorLog.Println(err)
 		flag.Usage()
-		os.Exit(ExitUsageError)
+		return ExitUsage
 	}
 
 	// Generate output filename
@@ -311,14 +333,20 @@ func main() {
 	}
 
 	// Connect to PostgreSQL if not skipped
+	pgUnavailable := false
 	if !cfg.SkipPostgres {
 		if cfg.Verbose {
 			infoLog.Printf("Connecting to PostgreSQL at %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
 		}
 		if err := initPostgreSQL(cfg); err != nil {
 			errorLog.Printf("Could not connect to PostgreSQL: %v", err)
+			if cfg.SkipSystem {
+				errorLog.Println("Nothing to collect: --skip-system is set and PostgreSQL is unreachable")
+				return ExitUnavailable
+			}
 			errorLog.Println("Continuing with system data collection only...")
 			cfg.SkipPostgres = true
+			pgUnavailable = true
 		} else {
 			defer closeErrCheck(cfg.DB, "database connection")
 			if cfg.Verbose {
@@ -334,7 +362,7 @@ func main() {
 	outFile, err := os.OpenFile(outputFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		errorLog.Printf("Failed to create output file: %v", err)
-		os.Exit(ExitCollectError)
+		return ExitCantCreate
 	}
 	defer closeErrCheck(outFile, "output file")
 
@@ -355,16 +383,20 @@ func main() {
 	// Close ZIP writer
 	if err := zipWriter.Close(); err != nil {
 		errorLog.Printf("Failed to close archive: %v", err)
-		os.Exit(ExitCollectError)
+		return ExitIOError
 	}
 
 	if totalCollected == 0 {
 		errorLog.Println("No data collected - this may indicate a problem")
-		os.Exit(ExitNoData)
+		return ExitNoData
 	}
 
 	// Print summary
 	printSummary(totalCollected, outputFile, cfg)
+	if pgUnavailable {
+		return ExitUnavailable
+	}
+	return 0
 }
 
 // parseConfig parses command-line flags into a Config.
@@ -401,7 +433,10 @@ func parseConfig() (*Config, error) {
 		return nil, errVersionRequested
 	}
 
-	flag.Parse()
+	flag.CommandLine.Init(os.Args[0], flag.ContinueOnError)
+	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
+		return nil, errCommandLine
+	}
 
 	for _, raw := range strings.Split(excludeRaw, ",") {
 		if t := strings.TrimSpace(raw); t != "" {
@@ -433,12 +468,17 @@ func parseConfig() (*Config, error) {
 			portFlagSet = true
 		}
 	})
-	if !portFlagSet {
+	if !portFlagSet && !cfg.SkipPostgres {
 		if pgport := os.Getenv("PGPORT"); pgport != "" {
-			if p, err := strconv.Atoi(pgport); err == nil {
-				cfg.Port = p
+			p, err := strconv.Atoi(pgport)
+			if err != nil {
+				return nil, fmt.Errorf("invalid PGPORT %q: must be a port number", pgport)
 			}
+			cfg.Port = p
 		}
+	}
+	if !cfg.SkipPostgres && (cfg.Port < 1 || cfg.Port > 65535) {
+		return nil, fmt.Errorf("invalid port %d: must be between 1 and 65535", cfg.Port)
 	}
 
 	if cfg.Username == "" {
@@ -547,6 +587,11 @@ func (c *Config) ConnectionString(dbname string) string {
 		"sslmode=" + q(c.SSLMode),
 	}
 
+	// pgx applies PGCONNECT_TIMEOUT itself, and a value given here would
+	// override it.
+	if os.Getenv("PGCONNECT_TIMEOUT") == "" {
+		params = append(params, fmt.Sprintf("connect_timeout=%d", connectTimeoutSeconds))
+	}
 	if c.Password != "" {
 		params = append(params, "password="+q(c.Password))
 	}
@@ -570,7 +615,9 @@ func initPostgreSQL(cfg *Config) error {
 		return err
 	}
 
-	if err := db.Ping(); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+	defer cancel()
+	if err := db.PingContext(ctx); err != nil {
 		closeErrCheck(db, "database connection")
 		return err
 	}
@@ -637,8 +684,9 @@ func filterTasks(tasks []CollectionTask, cfg *Config) (runnable []CollectionTask
 	return
 }
 
-// collect executes tasks sequentially and streams directly to ZIP
-// Returns: collected count only
+// collect executes tasks sequentially and streams directly to ZIP. It returns
+// the number of tasks that wrote an archive entry, including those that then
+// failed, because what they wrote stays in the archive.
 func collect(cfg *Config, zipWriter *zip.Writer, tasks []CollectionTask) int {
 	collected := 0
 
@@ -647,6 +695,9 @@ func collect(cfg *Config, zipWriter *zip.Writer, tasks []CollectionTask) int {
 		lazy := &lazyZipWriter{zipWriter: zipWriter, header: archiveHeader(task.ArchivePath)}
 
 		err := task.Collector(cfg, lazy)
+		if lazy.WroteAny() {
+			collected++
+		}
 		if err != nil {
 			var skipErr SkipError
 			if errors.As(err, &skipErr) {
@@ -661,7 +712,6 @@ func collect(cfg *Config, zipWriter *zip.Writer, tasks []CollectionTask) int {
 			continue
 		}
 
-		// Only count if something was actually written
 		if !lazy.WroteAny() {
 			if cfg.VeryVerbose {
 				infoLog.Printf("⊘ %s (empty)", task.Name)
@@ -672,11 +722,22 @@ func collect(cfg *Config, zipWriter *zip.Writer, tasks []CollectionTask) int {
 		if cfg.VeryVerbose {
 			infoLog.Printf("✓ %s", task.Name)
 		}
-		collected++
 	}
 
 	return collected
 }
+
+// commandTimeout is how long a command may run before radar stops it, so that
+// one hung command cannot stall the run.
+var commandTimeout = 30 * time.Second
+
+// queryTimeout is how long a query may run, rows included, before radar
+// cancels it, so that one query waiting on a lock cannot stall the run.
+var queryTimeout = 30 * time.Second
+
+// connectTimeoutSeconds limits each PostgreSQL connection attempt when the
+// operator has not set PGCONNECT_TIMEOUT.
+var connectTimeoutSeconds = 10
 
 // commandHeadSize is how much of a command's output is held back from the
 // archive until the command either succeeds or writes more. A command that
@@ -719,12 +780,25 @@ func (h *headWriter) flush() error {
 // they arrive in the order the command wrote them.
 func execCommand(w io.Writer, name string, args ...string) error {
 	out := &headWriter{w: w, head: make([]byte, 0, commandHeadSize)}
-	cmd := exec.Command(name, args...)
+	ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, name, args...)
+	// A stopped command can be stuck in the kernel, or leave a child holding
+	// the output pipe open: WaitDelay makes Run return regardless.
+	cmd.WaitDelay = time.Second
 	cmd.Stdout = out
 	cmd.Stderr = out
 	err := cmd.Run()
 	if err == nil {
 		return out.flush()
+	}
+
+	// What the command wrote before the deadline is data, so it is kept.
+	if ctx.Err() != nil {
+		if err := out.flush(); err != nil {
+			return err
+		}
+		return fmt.Errorf("command '%s %v' timed out after %s", name, args, commandTimeout)
 	}
 
 	// The output is in the archive already, so only the failure is left to report.
@@ -777,13 +851,14 @@ func copyFile(path string, w io.Writer) error {
 // writeDirListingTSV writes a TSV listing of the regular files in dir: one row
 // per file with its size and modification time. File contents are never read.
 // Directories, symlinks and other irregular entries are left out, having no
-// meaningful size to report. A directory that is absent or unreadable is a skip,
-// which is the normal case when radar runs as an OS user without rights on the
-// path.
+// meaningful size to report. A missing directory is a skip.
 func writeDirListingTSV(dir string, w io.Writer) error {
 	entries, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return NewSkipError(fmt.Sprintf("directory not found: %s", dir))
+	}
 	if err != nil {
-		return NewSkipError(fmt.Sprintf("cannot list %s: %v", dir, err))
+		return fmt.Errorf("read failed: %w", err)
 	}
 
 	if _, err := io.WriteString(w, "directory\tfilename\tsize_bytes\tmodified\n"); err != nil {
@@ -835,20 +910,27 @@ func pgQueryCollector(db *sql.DB, relation, query string) func(*Config, io.Write
 		if db == nil {
 			return fmt.Errorf("PostgreSQL not initialized")
 		}
-		if err := skipIfRelationMissing(db, relation); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+		defer cancel()
+		if err := skipIfRelationMissing(ctx, db, relation); err != nil {
 			return err
 		}
-		rows, err := db.Query(query)
+		rows, err := db.QueryContext(ctx, query)
 		if err != nil {
 			if isPGUnavailableError(err) {
 				return NewSkipError(err.Error())
 			}
-			return err
+			return timedOut(ctx, err)
 		}
 		defer closeErrCheck(rows, "query rows")
-		return rowsToTSV(rows, w)
+		return timedOut(ctx, rowsToTSV(rows, w))
 	}
 }
+
+// droppedColumns are result columns that never reach the archive, whichever
+// query returns them. pg_subscription.subconninfo is a connection string that
+// can hold a password.
+var droppedColumns = []string{"subconninfo"}
 
 // rowsToTSV streams SQL rows to TSV format directly to writer
 func rowsToTSV(rows *sql.Rows, w io.Writer) error {
@@ -858,14 +940,22 @@ func rowsToTSV(rows *sql.Rows, w io.Writer) error {
 		return fmt.Errorf("getting columns: %w", err)
 	}
 
-	// Write TSV header
+	// The columns that are written, by position
+	var kept []int
 	for i, col := range columns {
-		if i > 0 {
+		if !slices.Contains(droppedColumns, col) {
+			kept = append(kept, i)
+		}
+	}
+
+	// Write TSV header
+	for n, i := range kept {
+		if n > 0 {
 			if _, err := w.Write([]byte{'\t'}); err != nil {
 				return err
 			}
 		}
-		if _, err := io.WriteString(w, col); err != nil {
+		if _, err := io.WriteString(w, columns[i]); err != nil {
 			return err
 		}
 	}
@@ -886,15 +976,15 @@ func rowsToTSV(rows *sql.Rows, w io.Writer) error {
 			return fmt.Errorf("scanning row: %w", err)
 		}
 
-		for i, val := range values {
-			if i > 0 {
+		for n, i := range kept {
+			if n > 0 {
 				if _, err := w.Write([]byte{'\t'}); err != nil {
 					return err
 				}
 			}
 
 			var field []byte
-			switch v := val.(type) {
+			switch v := values[i].(type) {
 			case nil:
 				// NULL → empty string
 				continue

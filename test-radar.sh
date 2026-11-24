@@ -8,6 +8,7 @@
 # 4. Non-root + pg_monitor
 # 5. Certificate authentication
 # 6. GSSAPI/Kerberos authentication
+# 7. Flags and exit status
 
 set -e
 
@@ -82,10 +83,18 @@ su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"CREATE TABLE pa
 su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"CREATE TABLE part_child PARTITION OF part_parent FOR VALUES FROM ('2020-01-01') TO ('2030-01-01');\""
 su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"CREATE EXTENSION pg_statviz;\""
 su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"SELECT pgstatviz.snapshot();\""
+# For the flags scenario: pgstattuple, whose collector runs only when included,
+# and a role without pg_read_all_settings, which cannot ask the server where
+# the data directory is
+su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"CREATE EXTENSION pgstattuple;\""
+su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"CREATE USER plainuser WITH PASSWORD 'plainpass';\""
 # A database testuser may not connect to, which radar records without
 # connecting, so the server logs no refused login
 su - postgres -c "/usr/lib/postgresql/18/bin/createdb noconnect"
 su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"REVOKE CONNECT ON DATABASE noconnect FROM PUBLIC;\""
+# A subscription whose connection string holds a password. connect = false
+# creates it without contacting a publisher.
+su - postgres -c "/usr/lib/postgresql/18/bin/psql -d testdb -c \"CREATE SUBSCRIPTION radar_sub CONNECTION 'host=127.0.0.1 dbname=testdb password=subscription-secret-value' PUBLICATION radar_pub WITH (connect = false);\""
 
 echo ""
 echo "Creating non-root system user..."
@@ -405,6 +414,12 @@ validate_zip() {
 		return 1
 	fi
 
+	# A subscription's connection string must not appear anywhere in the archive.
+	if unzip -p "$zip_file" 2>/dev/null | grep -q "subscription-secret-value"; then
+		echo -e "${RED}✗ $scenario FAILED: a subscription connection string reached the archive${NC}"
+		return 1
+	fi
+
 	if ! validate_server_log "$scenario"; then
 		return 1
 	fi
@@ -433,6 +448,13 @@ if ! unzip -l "$ZIP1" | grep -q " databases/noconnect/"; then
 	echo -e "${RED}✗ Scenario 1 FAILED: the superuser collected nothing from noconnect${NC}"
 	exit 1
 fi
+# The superuser can read pg_subscription: its row is collected without the
+# connection string.
+SUBS1=$(unzip -p "$ZIP1" "postgresql/subscriptions.tsv" 2>/dev/null || true)
+if ! echo "$SUBS1" | tail -n +2 | grep -q "radar_sub" || echo "$SUBS1" | head -1 | grep -qw "subconninfo"; then
+	echo -e "${RED}✗ Scenario 1 FAILED: subscriptions.tsv must list radar_sub and have no subconninfo column${NC}"
+	exit 1
+fi
 echo -e "${GREEN}✓ Scenario 1 PASSED${NC}"
 rm -f "$ZIP1"
 }
@@ -453,6 +475,16 @@ if [ "$(echo "$OUT2" | grep -cE '^ERROR: ✗ noconnect/[^:]+: no CONNECT privile
 	echo -e "${RED}✗ Scenario 2 FAILED: radar did not report the missing CONNECT privilege on noconnect exactly once${NC}"
 	exit 1
 fi
+# No systemd runs in this container, so its tools have nothing to report: radar
+# skips them rather than reporting an error for each.
+if ! timedatectl status 2>&1 | grep -q "not been booted with systemd"; then
+	echo -e "${RED}✗ Scenario 2 FAILED: timedatectl did not report that systemd is not running${NC}"
+	exit 1
+fi
+if echo "$OUT2" | grep -q "not been booted with systemd"; then
+	echo -e "${RED}✗ Scenario 2 FAILED: radar reported an error for a systemd tool where systemd is not running${NC}"
+	exit 1
+fi
 echo -e "${GREEN}✓ Scenario 2 PASSED${NC}"
 rm -f "$ZIP2"
 }
@@ -468,8 +500,26 @@ ZIP3=$(su - radaruser -c "ls -t /home/radaruser/radar-*.zip | head -1")
 if ! validate_zip "$ZIP3" "Scenario 3" "no"; then
 	exit 1
 fi
-echo -e "${GREEN}✓ Scenario 3 PASSED${NC}"
 rm -f "$ZIP3"
+# A PgBouncer directory this OS user cannot read is reported for both
+# collectors: the unreadable listing as the unreadable file is.
+mkdir -m 0700 /etc/pgbouncer-private
+OUT3=$(su - radaruser -c "cd /home/radaruser && ./radar -skip-postgres -pgbouncer-conf /etc/pgbouncer-private 2>&1") || { echo "$OUT3"; exit 1; }
+for unreadable in "pgbouncer.ini: read failed: open /etc/pgbouncer-private/pgbouncer.ini" "pgbouncer_files: read failed: open /etc/pgbouncer-private"; do
+	if ! echo "$OUT3" | grep -qxF "ERROR: ✗ $unreadable: permission denied"; then
+		echo "$OUT3"
+		echo -e "${RED}✗ Scenario 3 FAILED: radar did not report '$unreadable: permission denied'${NC}"
+		exit 1
+	fi
+done
+# That run skipped PostgreSQL: its archive has system entries and no others.
+ZIP3B=$(ls -t /home/radaruser/radar-*.zip | head -1)
+if ! unzip -Z1 "$ZIP3B" | grep -q "^system/" || unzip -Z1 "$ZIP3B" | grep -qE "^(postgresql|databases)/"; then
+	echo -e "${RED}✗ Scenario 3 FAILED: --skip-postgres must collect system entries and no PostgreSQL ones${NC}"
+	exit 1
+fi
+echo -e "${GREEN}✓ Scenario 3 PASSED${NC}"
+rm -f /home/radaruser/radar-*.zip
 }
 
 # Scenario 4: Non-root + pg_monitor
@@ -650,6 +700,91 @@ if ! grep -qE 'connection authenticated: identity="testuser(@[^"]*)?" method=gss
 fi
 echo -e "${GREEN}✓ Scenario 6 PASSED${NC}"
 rm -f "$ZIP6"
+}
+
+# Scenario 7: Flags and exit status
+scenario_7() {
+echo ""
+echo "========================================"
+echo -e "${YELLOW}Scenario 7: Flags and exit status${NC}"
+echo "========================================"
+local dir out rc zip
+dir=$(mktemp -d)
+cp radar "$dir/"
+cd "$dir"
+
+# run runs radar with the given arguments and leaves its output in out, its
+# exit status in rc and the archive it wrote, if any, in zip.
+run() {
+	rm -f radar-*.zip
+	rc=0
+	out=$(./radar "$@" 2>&1) || rc=$?
+	zip=$(ls radar-*.zip 2>/dev/null || true)
+}
+# fail prints what the last run printed and why the scenario fails.
+fail() {
+	echo "$out"
+	echo -e "${RED}✗ Scenario 7 FAILED: $1 (exit $rc, archive: ${zip:-none})${NC}"
+	exit 1
+}
+# has is true when the archive has an entry at exactly this path, and has_under
+# when it has any entry under this directory.
+has() { [ -n "$zip" ] && unzip -Z1 "$zip" | grep -qxF -- "$1"; }
+has_under() { [ -n "$zip" ] && unzip -Z1 "$zip" | grep -q "^$1/"; }
+
+# --skip-system: PostgreSQL entries only. pgstattuple stays off by default.
+run -skip-system -h localhost -d testdb -U postgres
+[ "$rc" -eq 0 ] && has postgresql/version.tsv || fail "--skip-system must exit 0 and collect postgresql/version.tsv"
+if has_under system || has_under pgbouncer; then fail "--skip-system collected system or PgBouncer entries"; fi
+has databases/testdb/bloat.tsv && has postgresql/stat_ssl.tsv || fail "bloat.tsv and stat_ssl.tsv must be collected by default"
+if has databases/testdb/pgstattuple.tsv; then fail "pgstattuple was collected without --include"; fi
+
+# --exclude drops the named collectors and nothing else.
+run -skip-system -h localhost -d testdb -U postgres -exclude bloat,stat_ssl
+[ "$rc" -eq 0 ] && has postgresql/version.tsv && has databases/testdb/tables.tsv || fail "--exclude dropped a collector it was not given"
+if has databases/testdb/bloat.tsv || has postgresql/stat_ssl.tsv; then fail "--exclude bloat,stat_ssl still collected one of them"; fi
+
+# --include turns on a collector that is off by default.
+run -skip-system -h localhost -d testdb -U postgres -include pgstattuple
+[ "$rc" -eq 0 ] && has databases/testdb/pgstattuple.tsv || fail "--include pgstattuple did not collect pgstattuple.tsv"
+
+# --data-dir stands in for the data_directory setting when the role may not
+# read it.
+PGPASSWORD=plainpass run -skip-system -h localhost -d testdb -U plainuser
+[ "$rc" -eq 0 ] && [ -n "$zip" ] || fail "a role without pg_read_all_settings must still get an archive"
+if has postgresql/postgresql.auto.conf; then fail "postgresql.auto.conf was collected without --data-dir by a role that cannot read data_directory"; fi
+PGPASSWORD=plainpass run -skip-system -h localhost -d testdb -U plainuser -data-dir /var/lib/postgresql/18/main
+[ "$rc" -eq 0 ] && has postgresql/postgresql.auto.conf || fail "--data-dir did not collect postgresql.auto.conf"
+
+# A command line that cannot be parsed, and an invalid or missing argument,
+# exit 64.
+run --nosuchflag
+[ "$rc" -eq 64 ] || fail "an option radar does not have must exit 64"
+run -skip-system -skip-postgres
+[ "$rc" -eq 64 ] || fail "both skip options together must exit 64"
+PGPORT=abc run -skip-system -h localhost -d testdb -U postgres
+[ "$rc" -eq 64 ] && echo "$out" | grep -q "invalid PGPORT" || fail "an invalid PGPORT must exit 64 and name the variable"
+run -skip-system -h localhost -p 65536 -d testdb -U postgres
+[ "$rc" -eq 64 ] && echo "$out" | grep -q "invalid port 65536" || fail "a port out of range must exit 64 and name the port"
+
+# An archive that cannot be created exits 73. radaruser cannot write to /.
+rc=0 zip=
+out=$(su - radaruser -c "cd / && /home/radaruser/radar -skip-postgres" 2>&1) || rc=$?
+[ "$rc" -eq 73 ] || fail "an archive that cannot be created must exit 73"
+
+# PostgreSQL unreachable exits 69. With system collection skipped there is
+# nothing to collect, so radar says so and leaves no archive behind.
+run -skip-system -h localhost -p 5999 -d testdb -U postgres
+[ "$rc" -eq 69 ] && [ -z "$zip" ] && echo "$out" | grep -q "Nothing to collect" || fail "--skip-system with PostgreSQL unreachable must exit 69, say there is nothing to collect and leave no archive"
+if echo "$out" | grep -q "Continuing with system data collection"; then fail "--skip-system with PostgreSQL unreachable must not announce system collection"; fi
+
+# Without --skip-system the system data is still collected, and the exit status
+# says that the PostgreSQL data is missing.
+run -h localhost -p 5999 -d testdb -U postgres
+[ "$rc" -eq 69 ] && has_under system || fail "an unreachable PostgreSQL must exit 69 and still collect system entries"
+if has_under postgresql || has_under databases; then fail "PostgreSQL entries were collected from an unreachable PostgreSQL"; fi
+
+echo -e "${GREEN}✓ Scenario 7 PASSED${NC}"
 }
 
 "scenario_$SCENARIO"

@@ -22,7 +22,7 @@ The following table describes the environment variables that radar reads:
 | Variable | Description |
 |----------|-------------|
 | `PGHOST` | Specifies the PostgreSQL host. |
-| `PGPORT` | Specifies the PostgreSQL port. |
+| `PGPORT` | Specifies the PostgreSQL port. radar rejects a value that is not a number from 1 to 65535. |
 | `PGUSER` | Specifies the PostgreSQL user name. |
 | `PGPASSWORD` | Specifies the PostgreSQL password. |
 | `PGPASSFILE` | Names the password file that the driver reads when no password is supplied; the default is `~/.pgpass`. |
@@ -35,5 +35,6 @@ The following table describes the environment variables that radar reads:
 | `KRB5_CONFIG` | Names the Kerberos configuration file; the default is `/etc/krb5.conf`. |
 
 The pgx driver also applies some other libpq environment variables, such as
-`PGAPPNAME` and `PGCONNECT_TIMEOUT`. pgx does not support `PGSSLCRL` or
-`PGSSLCRLDIR`, so radar does not check certificate revocation lists.
+`PGAPPNAME` and `PGCONNECT_TIMEOUT`. When `PGCONNECT_TIMEOUT` is not set, radar
+allows 10 seconds for each connection attempt. pgx does not support `PGSSLCRL`
+or `PGSSLCRLDIR`, so radar does not check certificate revocation lists.

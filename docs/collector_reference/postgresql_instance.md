@@ -61,7 +61,7 @@ these collectors produce:
 | `postgresql/stat_statements_total_time.tsv` | `pg_stat_statements` | Lists the top 100 queries by total execution time (PostgreSQL 13 and later). |
 | `postgresql/stat_subscription_stats.tsv` | `pg_stat_subscription_stats` | Reports the apply and sync error counts of each subscription (PostgreSQL 15 and later), and the per-kind conflict counters (PostgreSQL 18 and later). |
 | `postgresql/stat_wal.tsv` | `pg_stat_wal` | Reports WAL statistics (PostgreSQL 14 and later). |
-| `postgresql/subscriptions.tsv` | `pg_subscription` | Lists the logical replication subscriptions. |
+| `postgresql/subscriptions.tsv` | `pg_subscription` | Lists the logical replication subscriptions, without the `subconninfo` connection string. |
 | `postgresql/tablespace_sizes.tsv` | `pg_tablespace_size()` | Reports tablespace disk usage. |
 | `postgresql/tablespaces.tsv` | `pg_tablespace` | Lists the tablespace definitions. |
 | `postgresql/version.tsv` | `version()` | Reports the PostgreSQL version. |
